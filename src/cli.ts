@@ -13,13 +13,23 @@ interface CliArgs {
   readonly mode: DocumentationMode;
   readonly audience: string;
   readonly referencePaths: readonly string[];
+  readonly extensionPaths: readonly string[];
+  readonly enabledTools: readonly string[];
   readonly templatePath?: string;
   readonly draftPath?: string;
+  readonly authPath?: string;
+  readonly modelsPath?: string;
+  readonly model?: {
+    readonly provider: string;
+    readonly id: string;
+  };
 }
 
 function parseArgs(argv: readonly string[]): CliArgs {
   const args = new Map<string, string>();
   const references: string[] = [];
+  const extensions: string[] = [];
+  const tools: string[] = [];
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -34,6 +44,10 @@ function parseArgs(argv: readonly string[]): CliArgs {
     }
     if (key === "reference") {
       references.push(value);
+    } else if (key === "extension") {
+      extensions.push(value);
+    } else if (key === "tool") {
+      tools.push(value);
     } else {
       args.set(key, value);
     }
@@ -46,8 +60,29 @@ function parseArgs(argv: readonly string[]): CliArgs {
     mode: parseMode(args.get("mode") ?? "draft"),
     audience: args.get("audience") ?? "the intended documentation readers",
     referencePaths: references,
+    extensionPaths: extensions,
+    enabledTools: tools,
     templatePath: args.get("template"),
     draftPath: args.get("draft"),
+    authPath: args.get("auth-file"),
+    modelsPath: args.get("models-file"),
+    model: parseModel(args.get("model")),
+  };
+}
+
+function parseModel(value: string | undefined): CliArgs["model"] {
+  if (!value) {
+    return undefined;
+  }
+
+  const separatorIndex = value.indexOf("/");
+  if (separatorIndex === -1 || separatorIndex === 0 || separatorIndex === value.length - 1) {
+    throw new Error(`Invalid --model "${value}". Use provider/model-id.`);
+  }
+
+  return {
+    provider: value.slice(0, separatorIndex),
+    id: value.slice(separatorIndex + 1),
   };
 }
 
@@ -73,11 +108,18 @@ async function main(): Promise<void> {
   const referencePaths = await Promise.all(
     args.referencePaths.map((path) => realpath(resolve(workspacePath, path))),
   );
+  const extensionPaths = await Promise.all(
+    args.extensionPaths.map((path) => realpath(resolve(workspacePath, path))),
+  );
   const templatePath = args.templatePath
     ? await realpath(resolve(workspacePath, args.templatePath))
     : undefined;
   const draftPath = args.draftPath
     ? await realpath(resolve(workspacePath, args.draftPath))
+    : undefined;
+  const authPath = args.authPath ? await realpath(resolve(workspacePath, args.authPath)) : undefined;
+  const modelsPath = args.modelsPath
+    ? await realpath(resolve(workspacePath, args.modelsPath))
     : undefined;
 
   await mkdir(outputDir, { recursive: true });
@@ -87,8 +129,11 @@ async function main(): Promise<void> {
     workspacePath,
     outputDir,
     referencePaths,
+    extensionPaths,
     templatePath,
     draftPath,
+    authPath,
+    modelsPath,
   };
 
   process.stderr.write("Interactive documentation session started. Type /exit to finish.\n\n");

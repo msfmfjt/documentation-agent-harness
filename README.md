@@ -29,7 +29,8 @@ npm run doc -- \
   --template docs/templates/document-template.md \
   --reference docs/source-material.md \
   --output docs/generated \
-  --mode draft
+  --mode draft \
+  --model anthropic/claude-sonnet-4-5
 ```
 
 After startup, the agent reviews the template and reference documents, then asks which section to handle first or what missing information needs to be clarified. You provide feedback in the terminal and build the document section by section.
@@ -45,6 +46,11 @@ Options:
 - `--reference`: Reference document to use while drafting. Can be specified multiple times.
 - `--draft`: Existing draft to edit. If omitted, the session assumes a new document.
 - `--mode`: Initial mode. One of `overview`, `api`, `architecture`, `onboarding`, `draft`, or `full`.
+- `--model`: Model to use, in `provider/model-id` format.
+- `--models-file`: Path to a custom Pi `models.json` file.
+- `--auth-file`: Path to a custom Pi `auth.json` file.
+- `--extension`: Pi extension file to load. Can be specified multiple times.
+- `--tool`: Additional tool name to enable. Use this when an extension registers a custom tool.
 - `--audience`: Initial target audience. The audience can be revised during the session.
 
 ## Workflow
@@ -72,11 +78,45 @@ npm run doc -- \
 
 In this example, the agent reviews each template section and extracts usable information from the reference documents. It then proposes section drafts one at a time and revises them based on user feedback.
 
+## Extensions and Custom Providers
+
+The harness can load Pi extensions through `--extension`. This is the recommended way to add custom providers, custom tools, provider request hooks, or organization-specific behavior without hard-coding it into the documentation workflow.
+
+Custom providers can be registered inside an extension with `pi.registerProvider()`. For example, [examples/extensions/openai-compatible-provider.ts](examples/extensions/openai-compatible-provider.ts) registers a generic OpenAI-compatible provider named `custom-openai`.
+
+```bash
+CUSTOM_OPENAI_BASE_URL="https://gateway.example.com/v1" \
+CUSTOM_OPENAI_API_KEY="..." \
+CUSTOM_OPENAI_MODEL="documentation-model" \
+npm run doc -- \
+  --workspace /path/to/project \
+  --template docs/templates/document-template.md \
+  --reference docs/source-material.md \
+  --extension examples/extensions/openai-compatible-provider.ts \
+  --model custom-openai/documentation-model \
+  --output docs/generated
+```
+
+You can also provide a custom Pi `models.json` file:
+
+```bash
+npm run doc -- \
+  --workspace /path/to/project \
+  --template docs/templates/document-template.md \
+  --reference docs/source-material.md \
+  --models-file config/models.json \
+  --model my-provider/my-model \
+  --output docs/generated
+```
+
+If an extension registers custom tools, pass each tool name with `--tool`. The built-in documentation workflow enables only `read`, `write`, and `edit` by default.
+
 ## Project Structure
 
 - `src/cli.ts`: Parses CLI arguments, prepares the output directory, and starts the interactive session.
 - `src/documentation-harness.ts`: Creates the Pi SDK session and forwards terminal input as user feedback.
 - `src/prompts.ts`: Defines the system prompt and initial prompt for template-driven interactive drafting.
+- `examples/extensions/openai-compatible-provider.ts`: Minimal custom provider extension for OpenAI-compatible endpoints.
 
 ## Future Improvements
 

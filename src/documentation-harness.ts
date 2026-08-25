@@ -21,8 +21,16 @@ export interface DocumentationHarnessOptions {
   readonly mode: DocumentationMode;
   readonly audience: string;
   readonly referencePaths: readonly string[];
+  readonly extensionPaths: readonly string[];
+  readonly enabledTools: readonly string[];
   readonly templatePath?: string;
   readonly draftPath?: string;
+  readonly authPath?: string;
+  readonly modelsPath?: string;
+  readonly model?: {
+    readonly provider: string;
+    readonly id: string;
+  };
   readonly thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 }
 
@@ -34,14 +42,22 @@ export interface DocumentationHarnessResult {
 export async function runInteractiveDocumentationHarness(
   options: DocumentationHarnessOptions,
 ): Promise<DocumentationHarnessResult> {
-  const modelRuntime = await ModelRuntime.create();
+  const modelRuntime = await ModelRuntime.create({
+    authPath: options.authPath,
+    modelsPath: options.modelsPath,
+  });
   const settingsManager = SettingsManager.inMemory({
     compaction: { enabled: true },
     retry: { enabled: true, maxRetries: 2 },
   });
 
+  const initialModel = options.model
+    ? modelRuntime.getModel(options.model.provider, options.model.id)
+    : undefined;
+
   const loader = new DefaultResourceLoader({
     agentDir: getAgentDir(),
+    additionalExtensionPaths: [...options.extensionPaths],
     cwd: options.workspacePath,
     settingsManager,
     systemPromptOverride: () => documentationSystemPrompt,
@@ -50,12 +66,13 @@ export async function runInteractiveDocumentationHarness(
 
   const { session } = await createAgentSession({
     cwd: options.workspacePath,
+    model: initialModel,
     modelRuntime,
     resourceLoader: loader,
     sessionManager: SessionManager.inMemory(options.workspacePath),
     settingsManager,
     thinkingLevel: options.thinkingLevel ?? "medium",
-    tools: ["read", "write", "edit"],
+    tools: [...new Set(["read", "write", "edit", ...options.enabledTools])],
   });
 
   const unsubscribe = session.subscribe((event) => {
@@ -70,6 +87,14 @@ export async function runInteractiveDocumentationHarness(
   const terminal = createInterface({ input, output });
 
   try {
+    if (options.model) {
+      const selectedModel = modelRuntime.getModel(options.model.provider, options.model.id);
+      if (!selectedModel) {
+        throw new Error(`Model not found: ${options.model.provider}/${options.model.id}`);
+      }
+      await session.setModel(selectedModel);
+    }
+
     await session.prompt(buildInitialDocumentationPrompt(options));
 
     while (true) {
