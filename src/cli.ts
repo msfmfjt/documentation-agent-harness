@@ -1,5 +1,5 @@
-import { mkdir, realpath } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, readdir, realpath, stat } from "node:fs/promises";
+import { extname, resolve } from "node:path";
 
 import {
   runInteractiveDocumentationHarness,
@@ -13,6 +13,8 @@ interface CliArgs {
   readonly mode: DocumentationMode;
   readonly audience: string;
   readonly referencePaths: readonly string[];
+  readonly referenceDirs: readonly string[];
+  readonly referenceExtensions: readonly string[];
   readonly extensionPaths: readonly string[];
   readonly enabledTools: readonly string[];
   readonly templatePath?: string;
@@ -28,6 +30,8 @@ interface CliArgs {
 function parseArgs(argv: readonly string[]): CliArgs {
   const args = new Map<string, string>();
   const references: string[] = [];
+  const referenceDirs: string[] = [];
+  const referenceExtensions: string[] = [];
   const extensions: string[] = [];
   const tools: string[] = [];
 
@@ -44,6 +48,10 @@ function parseArgs(argv: readonly string[]): CliArgs {
     }
     if (key === "reference") {
       references.push(value);
+    } else if (key === "reference-dir") {
+      referenceDirs.push(value);
+    } else if (key === "reference-ext") {
+      referenceExtensions.push(...parseReferenceExtensions(value));
     } else if (key === "extension") {
       extensions.push(value);
     } else if (key === "tool") {
@@ -60,6 +68,11 @@ function parseArgs(argv: readonly string[]): CliArgs {
     mode: parseMode(args.get("mode") ?? "draft"),
     audience: args.get("audience") ?? "the intended documentation readers",
     referencePaths: references,
+    referenceDirs,
+    referenceExtensions:
+      referenceExtensions.length > 0
+        ? [...new Set(referenceExtensions)]
+        : [".md", ".mdx", ".txt", ".rst", ".adoc"],
     extensionPaths: extensions,
     enabledTools: tools,
     templatePath: args.get("template"),
@@ -68,6 +81,14 @@ function parseArgs(argv: readonly string[]): CliArgs {
     modelsPath: args.get("models-file"),
     model: parseModel(args.get("model")),
   };
+}
+
+function parseReferenceExtensions(value: string): string[] {
+  return value
+    .split(",")
+    .map((extension) => extension.trim())
+    .filter((extension) => extension.length > 0)
+    .map((extension) => (extension.startsWith(".") ? extension : `.${extension}`));
 }
 
 function parseModel(value: string | undefined): CliArgs["model"] {
@@ -105,9 +126,17 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const workspacePath = await realpath(resolve(args.workspacePath));
   const outputDir = resolve(workspacePath, args.outputDir);
-  const referencePaths = await Promise.all(
+  const explicitReferencePaths = await Promise.all(
     args.referencePaths.map((path) => realpath(resolve(workspacePath, path))),
   );
+  const referenceDirPaths = await Promise.all(
+    args.referenceDirs.map((path) => realpath(resolve(workspacePath, path))),
+  );
+  const discoveredReferencePaths = await collectReferenceFiles(
+    referenceDirPaths,
+    args.referenceExtensions,
+  );
+  const referencePaths = [...new Set([...explicitReferencePaths, ...discoveredReferencePaths])];
   const extensionPaths = await Promise.all(
     args.extensionPaths.map((path) => realpath(resolve(workspacePath, path))),
   );
@@ -141,6 +170,49 @@ async function main(): Promise<void> {
   process.stderr.write(`\nDone. Session: ${result.sessionId}\n`);
   if (result.sessionFile) {
     process.stderr.write(`Session file: ${result.sessionFile}\n`);
+  }
+}
+
+async function collectReferenceFiles(
+  directories: readonly string[],
+  extensions: readonly string[],
+): Promise<string[]> {
+  const extensionSet = new Set(extensions.map((extension) => extension.toLowerCase()));
+  const files: string[] = [];
+
+  for (const directory of directories) {
+    await collectReferenceFilesFromDirectory(directory, extensionSet, files);
+  }
+
+  return files.sort();
+}
+
+async function collectReferenceFilesFromDirectory(
+  directory: string,
+  extensions: ReadonlySet<string>,
+  files: string[],
+): Promise<void> {
+  const entries = await readdir(directory, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      await collectReferenceFilesFromDirectory(fullPath, extensions, files);
+      continue;
+    }
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    const info = await stat(fullPath);
+    if (!info.isFile()) {
+      continue;
+    }
+
+    const extension = extname(entry.name).toLowerCase();
+    if (extensions.has(extension)) {
+      files.push(await realpath(fullPath));
+    }
   }
 }
 

@@ -28,6 +28,7 @@ npm run doc -- \
   --workspace /path/to/workspace \
   --template docs/templates/document-template.md \
   --reference docs/source-material.md \
+  --reference-dir docs/reference-materials \
   --output docs/generated \
   --mode draft \
   --model anthropic/claude-sonnet-4-5
@@ -44,6 +45,8 @@ Options:
 - `--output`: Output directory, relative to the workspace or absolute.
 - `--template`: Template that defines the target document sections and required fields.
 - `--reference`: Reference document to use while drafting. Can be specified multiple times.
+- `--reference-dir`: Directory of reference documents. Files are discovered recursively.
+- `--reference-ext`: Reference file extension to include when using `--reference-dir`. Can be specified multiple times or as a comma-separated list.
 - `--draft`: Existing draft to edit. If omitted, the session assumes a new document.
 - `--mode`: Initial mode. One of `overview`, `api`, `architecture`, `onboarding`, `draft`, or `full`.
 - `--model`: Model to use, in `provider/model-id` format.
@@ -52,6 +55,8 @@ Options:
 - `--extension`: Pi extension file to load. Can be specified multiple times.
 - `--tool`: Additional tool name to enable. Use this when an extension registers a custom tool.
 - `--audience`: Initial target audience. The audience can be revised during the session.
+
+Default reference extensions are `.md`, `.mdx`, `.txt`, `.rst`, and `.adoc`.
 
 ## Workflow
 
@@ -70,7 +75,8 @@ npm run doc -- \
   --workspace /path/to/project \
   --template docs/templates/document-template.md \
   --reference docs/source-material.md \
-  --reference docs/background-notes.md \
+  --reference-dir docs/background-notes \
+  --reference-ext md,txt \
   --output docs/generated \
   --mode draft \
   --audience "internal reviewers"
