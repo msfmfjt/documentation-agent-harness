@@ -72,7 +72,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     referenceExtensions:
       referenceExtensions.length > 0
         ? [...new Set(referenceExtensions)]
-        : [".md", ".mdx", ".txt", ".rst", ".adoc"],
+        : [".md", ".rst", ".tex"],
     extensionPaths: extensions,
     enabledTools: tools,
     templatePath: args.get("template"),

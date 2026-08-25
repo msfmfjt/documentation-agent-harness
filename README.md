@@ -56,7 +56,7 @@ Options:
 - `--tool`: Additional tool name to enable. Use this when an extension registers a custom tool.
 - `--audience`: Initial target audience. The audience can be revised during the session.
 
-Default reference extensions are `.md`, `.mdx`, `.txt`, `.rst`, and `.adoc`.
+Default reference extensions are `.md`, `.rst`, and `.tex`.
 
 ## Workflow
 
