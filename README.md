@@ -58,6 +58,8 @@ Options:
 
 Default reference extensions are `.md`, `.rst`, and `.tex`.
 
+See [docs/template-authoring.md](docs/template-authoring.md) for guidance on writing templates.
+
 ## Workflow
 
 1. The agent reads the template and reference documents.
@@ -122,6 +124,7 @@ If an extension registers custom tools, pass each tool name with `--tool`. The b
 - `src/cli.ts`: Parses CLI arguments, prepares the output directory, and starts the interactive session.
 - `src/documentation-harness.ts`: Creates the Pi SDK session and forwards terminal input as user feedback.
 - `src/prompts.ts`: Defines the system prompt and initial prompt for template-driven interactive drafting.
+- `docs/template-authoring.md`: Explains how to write templates for the harness.
 - `examples/extensions/openai-compatible-provider.ts`: Minimal custom provider extension for OpenAI-compatible endpoints.
 
 ## Future Improvements
