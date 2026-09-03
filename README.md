@@ -21,6 +21,28 @@ npm install
 
 Pi authentication is required. Use the Pi CLI `/login` flow or configure the API key for the model provider you use.
 
+## Global Install
+
+Install the CLI directly from GitHub:
+
+```bash
+npm install -g github:msfmfjt/documentation-agent-harness
+```
+
+For a private repository, your local Git/GitHub credentials must be able to read the repository.
+
+After installation, run the CLI with `doc-harness`:
+
+```bash
+doc-harness \
+  --workspace /path/to/workspace \
+  --template docs/templates/document-template.md \
+  --reference docs/source-material.md \
+  --output docs/generated
+```
+
+Node.js `22.19.0` or newer is required.
+
 ## Usage
 
 ```bash

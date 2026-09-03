@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 
