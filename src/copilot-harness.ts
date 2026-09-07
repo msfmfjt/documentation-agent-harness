@@ -31,6 +31,14 @@ interface SessionErrorEvent {
   };
 }
 
+interface CopilotAuthStatus {
+  readonly isAuthenticated: boolean;
+  readonly authType?: string;
+  readonly host?: string;
+  readonly login?: string;
+  readonly statusMessage?: string;
+}
+
 interface CopilotTool<TArgs> {
   readonly name: string;
   readonly description?: string;
@@ -69,54 +77,61 @@ export async function runInteractiveCopilotDocumentationHarness(
 
   await client.start();
 
-  const session = await client.createSession({
-    availableTools: ["custom:write_document"],
-    clientName: "documentation-agent-harness",
-    model: options.copilotModel,
-    streaming: true,
-    systemMessage: {
-      mode: "append",
-      content: documentationSystemPrompt,
-    },
-    tools: [writeDocument],
-    workingDirectory: options.workspacePath,
-  });
-
-  const unsubscribeMessage = session.on("assistant.message_delta", (event: AssistantMessageDeltaEvent) => {
-    process.stdout.write(event.data.deltaContent);
-  });
-  const unsubscribeError = session.on("session.error", (event: SessionErrorEvent) => {
-    process.stderr.write(`\n[session error] ${event.data.message}\n`);
-  });
-
-  const terminal = createInterface({ input, output });
-
   try {
-    await session.sendAndWait({
-      prompt: buildInitialDocumentationPrompt(options),
-      attachments: buildAttachments(options),
-    });
-
-    while (true) {
-      const userInput = await terminal.question("\n\nYou: ");
-      const normalizedInput = userInput.trim();
-      if (normalizedInput === "/exit" || normalizedInput === "/quit") {
-        break;
-      }
-      if (normalizedInput.length === 0) {
-        continue;
-      }
-      await session.sendAndWait({ prompt: normalizedInput });
+    if (options.verbose) {
+      await logCopilotRuntimeDiagnostics(client);
     }
 
-    return {
-      sessionId: session.sessionId,
-    };
+    const session = await client.createSession({
+      availableTools: ["custom:write_document"],
+      clientName: "documentation-agent-harness",
+      model: options.copilotModel,
+      streaming: true,
+      systemMessage: {
+        mode: "append",
+        content: documentationSystemPrompt,
+      },
+      tools: [writeDocument],
+      workingDirectory: options.workspacePath,
+    });
+
+    const unsubscribeMessage = session.on("assistant.message_delta", (event: AssistantMessageDeltaEvent) => {
+      process.stdout.write(event.data.deltaContent);
+    });
+    const unsubscribeError = session.on("session.error", (event: SessionErrorEvent) => {
+      process.stderr.write(`\n[session error] ${event.data.message}\n`);
+    });
+
+    const terminal = createInterface({ input, output });
+
+    try {
+      await session.sendAndWait({
+        prompt: buildInitialDocumentationPrompt(options),
+        attachments: buildAttachments(options),
+      });
+
+      while (true) {
+        const userInput = await terminal.question("\n\nYou: ");
+        const normalizedInput = userInput.trim();
+        if (normalizedInput === "/exit" || normalizedInput === "/quit") {
+          break;
+        }
+        if (normalizedInput.length === 0) {
+          continue;
+        }
+        await session.sendAndWait({ prompt: normalizedInput });
+      }
+
+      return {
+        sessionId: session.sessionId,
+      };
+    } finally {
+      terminal.close();
+      unsubscribeError();
+      unsubscribeMessage();
+      await session.disconnect();
+    }
   } finally {
-    terminal.close();
-    unsubscribeError();
-    unsubscribeMessage();
-    await session.disconnect();
     await client.stop();
   }
 }
@@ -222,6 +237,31 @@ function createCopilotWriteDocumentTool(outputDir: string): CopilotTool<WriteDoc
   };
 }
 
+async function logCopilotRuntimeDiagnostics(client: {
+  getAuthStatus: () => Promise<CopilotAuthStatus>;
+  listModels: () => Promise<readonly unknown[]>;
+}): Promise<void> {
+  try {
+    const authStatus = await client.getAuthStatus();
+    logVerboseValue("Copilot auth authenticated", authStatus.isAuthenticated);
+    logVerboseValue("Copilot auth type", authStatus.authType ?? "unknown");
+    logVerboseValue("Copilot auth host", authStatus.host ?? "unknown");
+    logVerboseValue("Copilot auth login", authStatus.login ?? "unknown");
+    if (authStatus.statusMessage) {
+      logVerboseValue("Copilot auth status", authStatus.statusMessage);
+    }
+  } catch (error) {
+    logVerboseValue("Copilot auth status error", getErrorMessage(error));
+  }
+
+  try {
+    const models = await client.listModels();
+    logVerboseValue("Copilot model count", models.length);
+  } catch (error) {
+    logVerboseValue("Copilot model list error", getErrorMessage(error));
+  }
+}
+
 function buildAttachments(options: DocumentationHarnessOptions) {
   const paths = [
     options.templatePath,
@@ -263,4 +303,12 @@ function logVerboseList(
   for (const value of values) {
     process.stderr.write(`[verbose]   - ${value}\n`);
   }
+}
+
+function logVerboseValue(label: string, value: unknown): void {
+  process.stderr.write(`[verbose] ${label}: ${String(value)}\n`);
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
