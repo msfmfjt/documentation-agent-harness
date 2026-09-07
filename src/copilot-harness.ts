@@ -128,7 +128,8 @@ function createCopilotWriteDocumentTool(outputDir: string) {
       additionalProperties: false,
     },
     skipPermission: true,
-    handler: async ({ path, content }) => {
+    handler: async (args: WriteDocumentArgs) => {
+      const { path, content } = args;
       const targetPath = path.trim();
       if (!targetPath) {
         return writeDocumentFailure("Document path must not be empty.");
