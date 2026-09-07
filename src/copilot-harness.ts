@@ -61,7 +61,7 @@ export async function runInteractiveCopilotDocumentationHarness(
 
   const { CopilotClient, RuntimeConnection } = await import("@github/copilot-sdk");
   const copilotCliPath = await resolveCopilotCliPath(options.copilotCliPath);
-  const baseDirectory = getCopilotBaseDirectory();
+  const baseDirectory = getCopilotBaseDirectory(options.copilotHome);
   logVerbose(options, `Copilot CLI path: ${copilotCliPath}`);
   logVerbose(options, `Copilot base directory: ${baseDirectory}`);
 
@@ -136,8 +136,8 @@ export async function runInteractiveCopilotDocumentationHarness(
   }
 }
 
-function getCopilotBaseDirectory(): string {
-  return process.env.COPILOT_HOME ?? resolve(homedir(), ".copilot");
+function getCopilotBaseDirectory(explicitHome: string | undefined): string {
+  return explicitHome ?? resolve(homedir(), ".copilot");
 }
 
 async function resolveCopilotCliPath(explicitPath: string | undefined): Promise<string> {

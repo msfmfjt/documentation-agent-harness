@@ -78,6 +78,7 @@ Options:
 - `--models-file`: Path to a custom Pi `models.json` file.
 - `--auth-file`: Path to a custom Pi `auth.json` file.
 - `--copilot-cli-path`: Path to a Copilot CLI executable to use with Copilot runtime. Can also be set with `COPILOT_CLI_PATH`.
+- `--copilot-home`: Copilot runtime home directory. Can also be set with `COPILOT_HOME`.
 - `--persist-session`: Save the session so it can be resumed later.
 - `--resume`: Continue the most recent persisted session for the workspace.
 - `--session-file`: Resume a specific Pi session JSONL file.
@@ -258,6 +259,29 @@ Pi-specific options such as `--extension`, `--models-file`, and `--auth-file` ap
 
 The Copilot runtime supports `@github/copilot-sdk` `1.0.11` or newer.
 By default, the Copilot runtime uses `COPILOT_HOME` when set, otherwise `~/.copilot`, so it can reuse the login state created by `copilot /login`.
+Use `--copilot-home` when you need to force the harness to use the same Copilot home directory as the CLI:
+
+```bash
+doc-harness \
+  --runtime copilot \
+  --copilot-home ~/.copilot \
+  --workspace /path/to/project \
+  --template docs/templates/document-template.md \
+  --reference-dir docs/references \
+  --output docs/generated
+```
+
+On Windows, pass the full user profile path when needed:
+
+```powershell
+doc-harness `
+  --runtime copilot `
+  --copilot-home "C:\Users\<user>\.copilot" `
+  --workspace "C:\path\to\project" `
+  --template docs\templates\document-template.md `
+  --reference-dir docs\references `
+  --output docs\generated
+```
 
 If startup fails with `Could not resolve a @github/copilot platform package`, make sure optional dependencies are installed. Do not install this package with `--omit=optional` or `--no-optional`. You can also point the harness at an existing Copilot CLI executable:
 

@@ -14,7 +14,7 @@ export async function runInteractiveCopilotDocumentationHarness(options) {
     logVerboseList(options, "References", options.referencePaths);
     const { CopilotClient, RuntimeConnection } = await import("@github/copilot-sdk");
     const copilotCliPath = await resolveCopilotCliPath(options.copilotCliPath);
-    const baseDirectory = getCopilotBaseDirectory();
+    const baseDirectory = getCopilotBaseDirectory(options.copilotHome);
     logVerbose(options, `Copilot CLI path: ${copilotCliPath}`);
     logVerbose(options, `Copilot base directory: ${baseDirectory}`);
     const client = new CopilotClient({
@@ -80,8 +80,8 @@ export async function runInteractiveCopilotDocumentationHarness(options) {
         await client.stop();
     }
 }
-function getCopilotBaseDirectory() {
-    return process.env.COPILOT_HOME ?? resolve(homedir(), ".copilot");
+function getCopilotBaseDirectory(explicitHome) {
+    return explicitHome ?? resolve(homedir(), ".copilot");
 }
 async function resolveCopilotCliPath(explicitPath) {
     if (explicitPath) {
