@@ -6,7 +6,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
@@ -51,6 +51,7 @@ export async function runInteractiveDocumentationHarness(
 ): Promise<DocumentationHarnessResult> {
   const initialSessionManager = createSessionManager(initialOptions);
   const options = await hydrateOptionsFromSessionMetadata(initialOptions, initialSessionManager);
+  await mkdir(options.outputDir, { recursive: true });
 
   logVerbose(options, "Starting documentation harness");
   logVerbose(options, `Workspace: ${options.workspacePath}`);
@@ -115,7 +116,7 @@ export async function runInteractiveDocumentationHarness(
 
   const sessionManager = initialSessionManager;
   logVerbose(options, `Resolved session file: ${sessionManager.getSessionFile() ?? "(none)"}`);
-  await writeSessionMetadata(options, sessionManager);
+  await tryWriteSessionMetadata(options, sessionManager);
 
   const { session } = await createAgentSession({
     cwd: options.workspacePath,
@@ -175,7 +176,7 @@ export async function runInteractiveDocumentationHarness(
       sessionId: session.sessionId,
     };
   } finally {
-    await writeSessionMetadata(options, sessionManager);
+    await tryWriteSessionMetadata(options, sessionManager);
     terminal.close();
     unsubscribe();
     session.dispose();
@@ -289,6 +290,18 @@ async function writeSessionMetadata(
   };
 
   await writeFile(getSessionMetadataPath(sessionFile), `${JSON.stringify(metadata, null, 2)}\n`);
+}
+
+async function tryWriteSessionMetadata(
+  options: DocumentationHarnessOptions,
+  sessionManager: SessionManager,
+): Promise<void> {
+  try {
+    await writeSessionMetadata(options, sessionManager);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`Warning: Could not write session metadata: ${message}\n`);
+  }
 }
 
 function getSessionMetadataPath(sessionFile: string): string {

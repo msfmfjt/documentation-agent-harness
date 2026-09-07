@@ -111,6 +111,7 @@ doc-harness \
 ```
 
 The harness writes a sidecar metadata file next to the Pi session file. It stores the effective template, references, output directory, model, extension paths, and enabled tools for resume. It does not store API keys or `--auth-file`.
+The output directory is created again after metadata is restored, so resumed sessions can write to the saved output location.
 
 At exit, the CLI prints the session file path. Resume the most recent persisted session for the workspace with:
 
