@@ -256,6 +256,8 @@ doc-harness \
   --output docs/generated
 ```
 
+If the requested model is rejected as unavailable, run with `--verbose` and choose an id from `Copilot available models`, or omit `--model` and let the Copilot runtime pick its default.
+
 Pi-specific options such as `--extension`, `--models-file`, and `--auth-file` apply only to the Pi runtime.
 
 The Copilot runtime supports `@github/copilot-sdk` `1.0.11` or newer.

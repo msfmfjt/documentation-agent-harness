@@ -39,6 +39,11 @@ interface CopilotAuthStatus {
   readonly statusMessage?: string;
 }
 
+interface CopilotModelInfo {
+  readonly id: string;
+  readonly name?: string;
+}
+
 interface CopilotTool<TArgs> {
   readonly name: string;
   readonly description?: string;
@@ -84,9 +89,8 @@ export async function runInteractiveCopilotDocumentationHarness(
   await client.start();
 
   try {
-    if (options.verbose) {
-      await logCopilotRuntimeDiagnostics(client);
-    }
+    const models = await logCopilotRuntimeDiagnostics(client, options.verbose);
+    assertCopilotModelAvailable(options.copilotModel, models);
 
     const session = await client.createSession({
       availableTools: ["custom:write_document"],
@@ -253,27 +257,58 @@ function createCopilotWriteDocumentTool(outputDir: string): CopilotTool<WriteDoc
 
 async function logCopilotRuntimeDiagnostics(client: {
   getAuthStatus: () => Promise<CopilotAuthStatus>;
-  listModels: () => Promise<readonly unknown[]>;
-}): Promise<void> {
+  listModels: () => Promise<readonly CopilotModelInfo[]>;
+}, verbose: boolean): Promise<readonly CopilotModelInfo[]> {
   try {
     const authStatus = await client.getAuthStatus();
-    logVerboseValue("Copilot auth authenticated", authStatus.isAuthenticated);
-    logVerboseValue("Copilot auth type", authStatus.authType ?? "unknown");
-    logVerboseValue("Copilot auth host", authStatus.host ?? "unknown");
-    logVerboseValue("Copilot auth login", authStatus.login ?? "unknown");
-    if (authStatus.statusMessage) {
-      logVerboseValue("Copilot auth status", authStatus.statusMessage);
+    if (verbose) {
+      logVerboseValue("Copilot auth authenticated", authStatus.isAuthenticated);
+      logVerboseValue("Copilot auth type", authStatus.authType ?? "unknown");
+      logVerboseValue("Copilot auth host", authStatus.host ?? "unknown");
+      logVerboseValue("Copilot auth login", authStatus.login ?? "unknown");
+      if (authStatus.statusMessage) {
+        logVerboseValue("Copilot auth status", authStatus.statusMessage);
+      }
     }
   } catch (error) {
-    logVerboseValue("Copilot auth status error", getErrorMessage(error));
+    if (verbose) {
+      logVerboseValue("Copilot auth status error", getErrorMessage(error));
+    }
   }
 
   try {
     const models = await client.listModels();
-    logVerboseValue("Copilot model count", models.length);
+    if (verbose) {
+      logVerboseValue("Copilot model count", models.length);
+      logVerboseListValues(
+        "Copilot available models",
+        models.map((model) => `${model.id}${model.name ? ` (${model.name})` : ""}`),
+      );
+    }
+    return models;
   } catch (error) {
-    logVerboseValue("Copilot model list error", getErrorMessage(error));
+    if (verbose) {
+      logVerboseValue("Copilot model list error", getErrorMessage(error));
+    }
+    return [];
   }
+}
+
+function assertCopilotModelAvailable(
+  requestedModel: string | undefined,
+  models: readonly CopilotModelInfo[],
+): void {
+  if (!requestedModel || models.length === 0) {
+    return;
+  }
+  const availableModelIds = new Set(models.map((model) => model.id));
+  if (availableModelIds.has(requestedModel)) {
+    return;
+  }
+
+  throw new Error(
+    `Copilot model is not available: ${requestedModel}. Run with --verbose and choose one of the listed Copilot available models, or omit --model to use the Copilot default.`,
+  );
 }
 
 function buildAttachments(options: DocumentationHarnessOptions) {
@@ -321,6 +356,13 @@ function logVerboseList(
 
 function logVerboseValue(label: string, value: unknown): void {
   process.stderr.write(`[verbose] ${label}: ${String(value)}\n`);
+}
+
+function logVerboseListValues(label: string, values: readonly string[]): void {
+  process.stderr.write(`[verbose] ${label}: ${values.length}\n`);
+  for (const value of values) {
+    process.stderr.write(`[verbose]   - ${value}\n`);
+  }
 }
 
 function getErrorMessage(error: unknown): string {
