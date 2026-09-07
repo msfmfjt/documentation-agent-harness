@@ -1,4 +1,3 @@
-import { CopilotClient, defineTool, ToolSet } from "@github/copilot-sdk";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -30,6 +29,15 @@ interface SessionErrorEvent {
   };
 }
 
+interface CopilotTool<TArgs> {
+  readonly name: string;
+  readonly description?: string;
+  readonly parameters?: Record<string, unknown>;
+  readonly handler?: (args: TArgs) => Promise<unknown> | unknown;
+  readonly skipPermission?: boolean;
+  readonly defer?: "auto" | "never";
+}
+
 export async function runInteractiveCopilotDocumentationHarness(
   options: DocumentationHarnessOptions,
 ): Promise<DocumentationHarnessResult> {
@@ -41,6 +49,7 @@ export async function runInteractiveCopilotDocumentationHarness(
   logVerbose(options, `Model: ${options.copilotModel ?? "auto"}`);
   logVerboseList(options, "References", options.referencePaths);
 
+  const { CopilotClient } = await import("@github/copilot-sdk");
   const client = new CopilotClient({
     clientInfo: {
       applicationName: "documentation-agent-harness",
@@ -51,12 +60,11 @@ export async function runInteractiveCopilotDocumentationHarness(
   });
 
   const writeDocument = createCopilotWriteDocumentTool(options.outputDir);
-  const availableTools = new ToolSet().addCustom("write_document");
 
   await client.start();
 
   const session = await client.createSession({
-    availableTools,
+    availableTools: ["custom:write_document"],
     clientName: "documentation-agent-harness",
     model: options.copilotModel,
     streaming: true,
@@ -107,8 +115,9 @@ export async function runInteractiveCopilotDocumentationHarness(
   }
 }
 
-function createCopilotWriteDocumentTool(outputDir: string) {
-  return defineTool<WriteDocumentArgs>("write_document", {
+function createCopilotWriteDocumentTool(outputDir: string): CopilotTool<WriteDocumentArgs> {
+  return {
+    name: "write_document",
     description:
       "Create or overwrite a documentation output file. The path must be relative to the configured documentation output directory.",
     defer: "never",
@@ -153,7 +162,7 @@ function createCopilotWriteDocumentTool(outputDir: string) {
         textResultForLlm: `Successfully wrote ${content.length} bytes to ${relativeTarget}`,
       };
     },
-  });
+  };
 }
 
 function buildAttachments(options: DocumentationHarnessOptions) {
