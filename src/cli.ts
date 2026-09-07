@@ -32,6 +32,7 @@ interface CliArgs {
     readonly provider: string;
     readonly id: string;
   };
+  readonly providedOptions: readonly string[];
 }
 
 function parseArgs(argv: readonly string[]): CliArgs {
@@ -41,6 +42,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
   const referenceExtensions: string[] = [];
   const extensions: string[] = [];
   const tools: string[] = [];
+  const providedOptions = new Set<string>();
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -49,6 +51,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     }
 
     const key = token.slice(2);
+    providedOptions.add(key);
     if (key === "verbose" || key === "persist-session" || key === "resume") {
       args.set(key, "true");
       continue;
@@ -97,6 +100,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     resume: args.get("resume") === "true",
     verbose: args.get("verbose") === "true",
     model: parseModel(args.get("model")),
+    providedOptions: [...providedOptions],
   };
 }
 

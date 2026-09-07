@@ -6,6 +6,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
@@ -36,6 +37,7 @@ export interface DocumentationHarnessOptions {
     readonly provider: string;
     readonly id: string;
   };
+  readonly providedOptions: readonly string[];
   readonly thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 }
 
@@ -45,8 +47,11 @@ export interface DocumentationHarnessResult {
 }
 
 export async function runInteractiveDocumentationHarness(
-  options: DocumentationHarnessOptions,
+  initialOptions: DocumentationHarnessOptions,
 ): Promise<DocumentationHarnessResult> {
+  const initialSessionManager = createSessionManager(initialOptions);
+  const options = await hydrateOptionsFromSessionMetadata(initialOptions, initialSessionManager);
+
   logVerbose(options, "Starting documentation harness");
   logVerbose(options, `Workspace: ${options.workspacePath}`);
   logVerbose(options, `Output directory: ${options.outputDir}`);
@@ -108,8 +113,9 @@ export async function runInteractiveDocumentationHarness(
     }
   }
 
-  const sessionManager = createSessionManager(options);
+  const sessionManager = initialSessionManager;
   logVerbose(options, `Resolved session file: ${sessionManager.getSessionFile() ?? "(none)"}`);
+  await writeSessionMetadata(options, sessionManager);
 
   const { session } = await createAgentSession({
     cwd: options.workspacePath,
@@ -169,10 +175,124 @@ export async function runInteractiveDocumentationHarness(
       sessionId: session.sessionId,
     };
   } finally {
+    await writeSessionMetadata(options, sessionManager);
     terminal.close();
     unsubscribe();
     session.dispose();
   }
+}
+
+interface SessionMetadata {
+  readonly version: 1;
+  readonly savedAt: string;
+  readonly options: SessionMetadataOptions;
+}
+
+type SessionMetadataOptions = Pick<
+  DocumentationHarnessOptions,
+  | "workspacePath"
+  | "outputDir"
+  | "mode"
+  | "audience"
+  | "referencePaths"
+  | "extensionPaths"
+  | "enabledTools"
+  | "templatePath"
+  | "draftPath"
+  | "modelsPath"
+  | "sessionDir"
+  | "model"
+>;
+
+async function hydrateOptionsFromSessionMetadata(
+  options: DocumentationHarnessOptions,
+  sessionManager: SessionManager,
+): Promise<DocumentationHarnessOptions> {
+  if (!options.resume && !options.sessionFile) {
+    return options;
+  }
+
+  const metadata = await readSessionMetadata(sessionManager);
+  if (!metadata) {
+    logVerbose(options, "No session metadata found to hydrate resume options.");
+    return options;
+  }
+
+  const providedOptions = new Set(options.providedOptions);
+  const saved = metadata.options;
+
+  return {
+    ...options,
+    outputDir: providedOptions.has("output") ? options.outputDir : saved.outputDir,
+    mode: providedOptions.has("mode") ? options.mode : saved.mode,
+    audience: providedOptions.has("audience") ? options.audience : saved.audience,
+    referencePaths:
+      providedOptions.has("reference") || providedOptions.has("reference-dir")
+        ? options.referencePaths
+        : saved.referencePaths,
+    extensionPaths: providedOptions.has("extension") ? options.extensionPaths : saved.extensionPaths,
+    enabledTools: providedOptions.has("tool") ? options.enabledTools : saved.enabledTools,
+    templatePath: providedOptions.has("template") ? options.templatePath : saved.templatePath,
+    draftPath: providedOptions.has("draft") ? options.draftPath : saved.draftPath,
+    modelsPath: providedOptions.has("models-file") ? options.modelsPath : saved.modelsPath,
+    sessionDir: providedOptions.has("session-dir") ? options.sessionDir : saved.sessionDir,
+    model: providedOptions.has("model") ? options.model : saved.model,
+  };
+}
+
+async function readSessionMetadata(
+  sessionManager: SessionManager,
+): Promise<SessionMetadata | undefined> {
+  const sessionFile = sessionManager.getSessionFile();
+  if (!sessionFile) {
+    return undefined;
+  }
+
+  try {
+    const content = await readFile(getSessionMetadataPath(sessionFile), "utf8");
+    const parsed = JSON.parse(content) as SessionMetadata;
+    return parsed.version === 1 ? parsed : undefined;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function writeSessionMetadata(
+  options: DocumentationHarnessOptions,
+  sessionManager: SessionManager,
+): Promise<void> {
+  const sessionFile = sessionManager.getSessionFile();
+  if (!sessionFile || !sessionManager.isPersisted()) {
+    return;
+  }
+
+  const metadata: SessionMetadata = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    options: {
+      workspacePath: options.workspacePath,
+      outputDir: options.outputDir,
+      mode: options.mode,
+      audience: options.audience,
+      referencePaths: options.referencePaths,
+      extensionPaths: options.extensionPaths,
+      enabledTools: options.enabledTools,
+      templatePath: options.templatePath,
+      draftPath: options.draftPath,
+      modelsPath: options.modelsPath,
+      sessionDir: options.sessionDir,
+      model: options.model,
+    },
+  };
+
+  await writeFile(getSessionMetadataPath(sessionFile), `${JSON.stringify(metadata, null, 2)}\n`);
+}
+
+function getSessionMetadataPath(sessionFile: string): string {
+  return `${sessionFile}.doc-harness.json`;
 }
 
 function createSessionManager(options: DocumentationHarnessOptions): SessionManager {

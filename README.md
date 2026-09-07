@@ -110,6 +110,8 @@ doc-harness \
   --persist-session
 ```
 
+The harness writes a sidecar metadata file next to the Pi session file. It stores the effective template, references, output directory, model, extension paths, and enabled tools for resume. It does not store API keys or `--auth-file`.
+
 At exit, the CLI prints the session file path. Resume the most recent persisted session for the workspace with:
 
 ```bash
@@ -126,7 +128,7 @@ doc-harness \
   --session-file /path/to/session.jsonl
 ```
 
-Use the same template, reference, model, and extension options when resuming if the draft still depends on those inputs.
+When resuming, CLI options you specify override the saved metadata. Options you omit are restored from the saved metadata when available.
 
 ## Example
 
