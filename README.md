@@ -255,6 +255,8 @@ doc-harness \
 
 Pi-specific options such as `--extension`, `--models-file`, and `--auth-file` apply only to the Pi runtime.
 
+The Copilot runtime supports `@github/copilot-sdk` `1.0.11` or newer.
+
 ## Project Structure
 
 - `src/cli.ts`: Parses CLI arguments, prepares the output directory, and starts the interactive session.

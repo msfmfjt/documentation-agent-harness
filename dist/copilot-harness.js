@@ -12,9 +12,6 @@ export async function runInteractiveCopilotDocumentationHarness(options) {
     logVerboseList(options, "References", options.referencePaths);
     const { CopilotClient } = await import("@github/copilot-sdk");
     const client = new CopilotClient({
-        clientInfo: {
-            applicationName: "documentation-agent-harness",
-        },
         logLevel: options.verbose ? "debug" : undefined,
         mode: "empty",
         workingDirectory: options.workspacePath,
