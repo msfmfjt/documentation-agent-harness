@@ -20,6 +20,7 @@ export function buildInitialDocumentationPrompt(options) {
         "- Do not inspect source code unless the user explicitly asks you to.",
         "- If a template is provided, follow its section structure and required fields.",
         "- If reference documents are provided, extract only information relevant to the target document.",
+        "- Use list_documents and read_document when those tools are available to inspect provided documentation inputs.",
         "- Do not copy large passages from references. Summarize and adapt them for the target document.",
         "- Work section by section.",
         "- For each section, propose an editing plan or draft, ask for user feedback, then revise.",

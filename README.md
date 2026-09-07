@@ -11,7 +11,7 @@ Minimal Pi SDK harness for generating Markdown documentation through an interact
 - Revises drafts based on user feedback
 - Creates or edits Markdown files after user confirmation
 - Does not inspect source code by default
-- Enables `read`, `edit`, and a constrained `write_document` tool, keeping the workflow focused on provided materials and documentation output
+- Enables constrained documentation tools, keeping the workflow focused on provided materials and documentation output
 
 ## Setup
 
@@ -105,6 +105,8 @@ See [docs/template-authoring.md](docs/template-authoring.md) for guidance on wri
 
 Final documentation files are written through the built-in harness tool `write_document`. It accepts paths relative to `--output` and rejects absolute paths or paths that leave the output directory.
 
+When using the Copilot runtime, the harness also provides `list_documents` and `read_document`. These tools allow the agent to read only the configured template, references, draft, and generated documentation files.
+
 ## Session Resume
 
 By default, sessions are in-memory and disappear when the process exits. Use `--persist-session` when you want to resume a drafting session later:
@@ -186,7 +188,7 @@ npm run doc -- \
   --output docs/generated
 ```
 
-If an extension registers custom tools, pass each tool name with `--tool`. The built-in documentation workflow enables `read`, `edit`, and `write_document` by default.
+If an extension registers custom tools, pass each tool name with `--tool`. The Pi runtime enables `read`, `edit`, and `write_document` by default. The Copilot runtime enables constrained `list_documents`, `read_document`, and `write_document` tools.
 
 Use `--verbose` when debugging custom provider loading:
 

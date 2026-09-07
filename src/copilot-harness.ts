@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -17,6 +17,10 @@ import {
 interface WriteDocumentArgs {
   readonly path: string;
   readonly content: string;
+}
+
+interface ReadDocumentArgs {
+  readonly path: string;
 }
 
 interface AssistantMessageDeltaEvent {
@@ -84,6 +88,9 @@ export async function runInteractiveCopilotDocumentationHarness(
     workingDirectory: options.workspacePath,
   });
 
+  const readableDocuments = createReadableDocumentRegistry(options);
+  const listDocuments = createCopilotListDocumentsTool(readableDocuments);
+  const readDocument = createCopilotReadDocumentTool(options, readableDocuments);
   const writeDocument = createCopilotWriteDocumentTool(options.outputDir);
 
   await client.start();
@@ -93,7 +100,7 @@ export async function runInteractiveCopilotDocumentationHarness(
     assertCopilotModelAvailable(options.copilotModel, models);
 
     const session = await client.createSession({
-      availableTools: ["custom:write_document"],
+      availableTools: ["custom:list_documents", "custom:read_document", "custom:write_document"],
       clientName: "documentation-agent-harness",
       model: options.copilotModel,
       streaming: true,
@@ -101,7 +108,7 @@ export async function runInteractiveCopilotDocumentationHarness(
         mode: "append",
         content: documentationSystemPrompt,
       },
-      tools: [writeDocument],
+      tools: [listDocuments, readDocument, writeDocument],
       workingDirectory: options.workspacePath,
     });
 
@@ -158,6 +165,38 @@ function getGithubTokenFromEnvironment(envName: string | undefined): string | un
   return token && token.trim().length > 0 ? token : undefined;
 }
 
+interface ReadableDocument {
+  readonly path: string;
+  readonly displayName: string;
+  readonly kind: "template" | "reference" | "draft";
+}
+
+function createReadableDocumentRegistry(options: DocumentationHarnessOptions): readonly ReadableDocument[] {
+  const documents: ReadableDocument[] = [];
+  if (options.templatePath) {
+    documents.push({
+      path: options.templatePath,
+      displayName: relative(options.workspacePath, options.templatePath),
+      kind: "template",
+    });
+  }
+  for (const referencePath of options.referencePaths) {
+    documents.push({
+      path: referencePath,
+      displayName: relative(options.workspacePath, referencePath),
+      kind: "reference",
+    });
+  }
+  if (options.draftPath) {
+    documents.push({
+      path: options.draftPath,
+      displayName: relative(options.workspacePath, options.draftPath),
+      kind: "draft",
+    });
+  }
+  return documents;
+}
+
 async function resolveCopilotCliPath(explicitPath: string | undefined): Promise<string> {
   if (explicitPath) {
     return explicitPath;
@@ -205,6 +244,100 @@ async function canRead(path: string): Promise<boolean> {
   }
 }
 
+function createCopilotListDocumentsTool(
+  readableDocuments: readonly ReadableDocument[],
+): CopilotTool<Record<string, never>> {
+  return {
+    name: "list_documents",
+    description:
+      "List the template, reference, and draft documents that this documentation session is allowed to read.",
+    defer: "never",
+    parameters: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+    skipPermission: true,
+    handler: () => ({
+      resultType: "success" as const,
+      textResultForLlm:
+        readableDocuments.length > 0
+          ? readableDocuments
+              .map((document) => `- ${document.displayName} (${document.kind})`)
+              .join("\n")
+          : "No readable template, reference, or draft documents were provided.",
+    }),
+  };
+}
+
+function createCopilotReadDocumentTool(
+  options: DocumentationHarnessOptions,
+  readableDocuments: readonly ReadableDocument[],
+): CopilotTool<ReadDocumentArgs> {
+  return {
+    name: "read_document",
+    description:
+      "Read a provided template, reference, draft, or generated documentation file. Source code files are not readable through this tool.",
+    defer: "never",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            "Document path to read. Use a path shown by list_documents, or a path relative to the documentation output directory for generated files.",
+        },
+      },
+      required: ["path"],
+      additionalProperties: false,
+    },
+    skipPermission: true,
+    handler: async (args: ReadDocumentArgs) => {
+      const resolvedPath = resolveReadableDocumentPath(args.path, options, readableDocuments);
+      if (!resolvedPath) {
+        return documentToolFailure(
+          "Document path is not readable. Use list_documents, or read a file inside the documentation output directory.",
+        );
+      }
+
+      try {
+        const content = await readFile(resolvedPath, "utf8");
+        return {
+          resultType: "success" as const,
+          textResultForLlm: content,
+        };
+      } catch (error) {
+        return documentToolFailure(`Could not read document: ${getErrorMessage(error)}`);
+      }
+    },
+  };
+}
+
+function resolveReadableDocumentPath(
+  requestedPath: string,
+  options: DocumentationHarnessOptions,
+  readableDocuments: readonly ReadableDocument[],
+): string | undefined {
+  const trimmedPath = requestedPath.trim();
+  if (!trimmedPath) {
+    return undefined;
+  }
+
+  const candidates = [
+    isAbsolute(trimmedPath) ? resolve(trimmedPath) : resolve(options.workspacePath, trimmedPath),
+    resolve(options.outputDir, trimmedPath),
+  ];
+  const allowedPaths = new Set(readableDocuments.map((document) => resolve(document.path)));
+
+  for (const candidate of candidates) {
+    if (allowedPaths.has(candidate) || isInsideDirectory(options.outputDir, candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
 function createCopilotWriteDocumentTool(outputDir: string): CopilotTool<WriteDocumentArgs> {
   return {
     name: "write_document",
@@ -239,10 +372,10 @@ function createCopilotWriteDocumentTool(outputDir: string): CopilotTool<WriteDoc
 
       const resolvedOutputDir = resolve(outputDir);
       const resolvedTarget = resolve(resolvedOutputDir, targetPath);
-      const relativeTarget = relative(resolvedOutputDir, resolvedTarget);
-      if (relativeTarget.startsWith("..") || isAbsolute(relativeTarget)) {
+      if (!isInsideDirectory(resolvedOutputDir, resolvedTarget)) {
         return writeDocumentFailure("Document path must stay inside the output directory.");
       }
+      const relativeTarget = relative(resolvedOutputDir, resolvedTarget);
 
       await mkdir(dirname(resolvedTarget), { recursive: true });
       await writeFile(resolvedTarget, content, "utf8");
@@ -253,6 +386,11 @@ function createCopilotWriteDocumentTool(outputDir: string): CopilotTool<WriteDoc
       };
     },
   };
+}
+
+function isInsideDirectory(directory: string, path: string): boolean {
+  const relativeTarget = relative(resolve(directory), resolve(path));
+  return relativeTarget === "" || (!relativeTarget.startsWith("..") && !isAbsolute(relativeTarget));
 }
 
 async function logCopilotRuntimeDiagnostics(client: {
@@ -326,6 +464,10 @@ function buildAttachments(options: DocumentationHarnessOptions) {
 }
 
 function writeDocumentFailure(message: string) {
+  return documentToolFailure(message);
+}
+
+function documentToolFailure(message: string) {
   return {
     error: message,
     resultType: "failure" as const,

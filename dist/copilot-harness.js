@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -27,13 +27,16 @@ export async function runInteractiveCopilotDocumentationHarness(options) {
         mode: "empty",
         workingDirectory: options.workspacePath,
     });
+    const readableDocuments = createReadableDocumentRegistry(options);
+    const listDocuments = createCopilotListDocumentsTool(readableDocuments);
+    const readDocument = createCopilotReadDocumentTool(options, readableDocuments);
     const writeDocument = createCopilotWriteDocumentTool(options.outputDir);
     await client.start();
     try {
         const models = await logCopilotRuntimeDiagnostics(client, options.verbose);
         assertCopilotModelAvailable(options.copilotModel, models);
         const session = await client.createSession({
-            availableTools: ["custom:write_document"],
+            availableTools: ["custom:list_documents", "custom:read_document", "custom:write_document"],
             clientName: "documentation-agent-harness",
             model: options.copilotModel,
             streaming: true,
@@ -41,7 +44,7 @@ export async function runInteractiveCopilotDocumentationHarness(options) {
                 mode: "append",
                 content: documentationSystemPrompt,
             },
-            tools: [writeDocument],
+            tools: [listDocuments, readDocument, writeDocument],
             workingDirectory: options.workspacePath,
         });
         const unsubscribeMessage = session.on("assistant.message_delta", (event) => {
@@ -92,6 +95,31 @@ function getGithubTokenFromEnvironment(envName) {
     const token = process.env[envName];
     return token && token.trim().length > 0 ? token : undefined;
 }
+function createReadableDocumentRegistry(options) {
+    const documents = [];
+    if (options.templatePath) {
+        documents.push({
+            path: options.templatePath,
+            displayName: relative(options.workspacePath, options.templatePath),
+            kind: "template",
+        });
+    }
+    for (const referencePath of options.referencePaths) {
+        documents.push({
+            path: referencePath,
+            displayName: relative(options.workspacePath, referencePath),
+            kind: "reference",
+        });
+    }
+    if (options.draftPath) {
+        documents.push({
+            path: options.draftPath,
+            displayName: relative(options.workspacePath, options.draftPath),
+            kind: "draft",
+        });
+    }
+    return documents;
+}
 async function resolveCopilotCliPath(explicitPath) {
     if (explicitPath) {
         return explicitPath;
@@ -134,6 +162,79 @@ async function canRead(path) {
         return false;
     }
 }
+function createCopilotListDocumentsTool(readableDocuments) {
+    return {
+        name: "list_documents",
+        description: "List the template, reference, and draft documents that this documentation session is allowed to read.",
+        defer: "never",
+        parameters: {
+            type: "object",
+            properties: {},
+            additionalProperties: false,
+        },
+        skipPermission: true,
+        handler: () => ({
+            resultType: "success",
+            textResultForLlm: readableDocuments.length > 0
+                ? readableDocuments
+                    .map((document) => `- ${document.displayName} (${document.kind})`)
+                    .join("\n")
+                : "No readable template, reference, or draft documents were provided.",
+        }),
+    };
+}
+function createCopilotReadDocumentTool(options, readableDocuments) {
+    return {
+        name: "read_document",
+        description: "Read a provided template, reference, draft, or generated documentation file. Source code files are not readable through this tool.",
+        defer: "never",
+        parameters: {
+            type: "object",
+            properties: {
+                path: {
+                    type: "string",
+                    description: "Document path to read. Use a path shown by list_documents, or a path relative to the documentation output directory for generated files.",
+                },
+            },
+            required: ["path"],
+            additionalProperties: false,
+        },
+        skipPermission: true,
+        handler: async (args) => {
+            const resolvedPath = resolveReadableDocumentPath(args.path, options, readableDocuments);
+            if (!resolvedPath) {
+                return documentToolFailure("Document path is not readable. Use list_documents, or read a file inside the documentation output directory.");
+            }
+            try {
+                const content = await readFile(resolvedPath, "utf8");
+                return {
+                    resultType: "success",
+                    textResultForLlm: content,
+                };
+            }
+            catch (error) {
+                return documentToolFailure(`Could not read document: ${getErrorMessage(error)}`);
+            }
+        },
+    };
+}
+function resolveReadableDocumentPath(requestedPath, options, readableDocuments) {
+    const trimmedPath = requestedPath.trim();
+    if (!trimmedPath) {
+        return undefined;
+    }
+    const candidates = [
+        isAbsolute(trimmedPath) ? resolve(trimmedPath) : resolve(options.workspacePath, trimmedPath),
+        resolve(options.outputDir, trimmedPath),
+    ];
+    const allowedPaths = new Set(readableDocuments.map((document) => resolve(document.path)));
+    for (const candidate of candidates) {
+        if (allowedPaths.has(candidate) || isInsideDirectory(options.outputDir, candidate)) {
+            return candidate;
+        }
+    }
+    return undefined;
+}
 function createCopilotWriteDocumentTool(outputDir) {
     return {
         name: "write_document",
@@ -166,10 +267,10 @@ function createCopilotWriteDocumentTool(outputDir) {
             }
             const resolvedOutputDir = resolve(outputDir);
             const resolvedTarget = resolve(resolvedOutputDir, targetPath);
-            const relativeTarget = relative(resolvedOutputDir, resolvedTarget);
-            if (relativeTarget.startsWith("..") || isAbsolute(relativeTarget)) {
+            if (!isInsideDirectory(resolvedOutputDir, resolvedTarget)) {
                 return writeDocumentFailure("Document path must stay inside the output directory.");
             }
+            const relativeTarget = relative(resolvedOutputDir, resolvedTarget);
             await mkdir(dirname(resolvedTarget), { recursive: true });
             await writeFile(resolvedTarget, content, "utf8");
             return {
@@ -178,6 +279,10 @@ function createCopilotWriteDocumentTool(outputDir) {
             };
         },
     };
+}
+function isInsideDirectory(directory, path) {
+    const relativeTarget = relative(resolve(directory), resolve(path));
+    return relativeTarget === "" || (!relativeTarget.startsWith("..") && !isAbsolute(relativeTarget));
 }
 async function logCopilotRuntimeDiagnostics(client, verbose) {
     try {
@@ -235,6 +340,9 @@ function buildAttachments(options) {
     }));
 }
 function writeDocumentFailure(message) {
+    return documentToolFailure(message);
+}
+function documentToolFailure(message) {
     return {
         error: message,
         resultType: "failure",
