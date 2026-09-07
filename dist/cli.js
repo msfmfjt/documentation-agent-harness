@@ -1,0 +1,197 @@
+#!/usr/bin/env node
+import { mkdir, readdir, realpath, stat } from "node:fs/promises";
+import { extname, resolve } from "node:path";
+import { runInteractiveDocumentationHarness, } from "./documentation-harness.js";
+import { runInteractiveCopilotDocumentationHarness } from "./copilot-harness.js";
+function parseArgs(argv) {
+    const args = new Map();
+    const references = [];
+    const referenceDirs = [];
+    const referenceExtensions = [];
+    const extensions = [];
+    const tools = [];
+    const providedOptions = new Set();
+    for (let index = 0; index < argv.length; index += 1) {
+        const token = argv[index];
+        if (!token.startsWith("--")) {
+            throw new Error(`Unexpected argument: ${token}`);
+        }
+        const key = token.slice(2);
+        providedOptions.add(key);
+        if (key === "verbose" || key === "persist-session" || key === "resume") {
+            args.set(key, "true");
+            continue;
+        }
+        const value = argv[index + 1];
+        if (!value || value.startsWith("--")) {
+            throw new Error(`Missing value for --${key}`);
+        }
+        if (key === "reference") {
+            references.push(value);
+        }
+        else if (key === "reference-dir") {
+            referenceDirs.push(value);
+        }
+        else if (key === "reference-ext") {
+            referenceExtensions.push(...parseReferenceExtensions(value));
+        }
+        else if (key === "extension") {
+            extensions.push(value);
+        }
+        else if (key === "tool") {
+            tools.push(value);
+        }
+        else {
+            args.set(key, value);
+        }
+        index += 1;
+    }
+    const runtime = parseRuntime(args.get("runtime") ?? "pi");
+    const rawModel = args.get("model");
+    return {
+        runtime,
+        workspacePath: args.get("workspace") ?? args.get("target") ?? process.cwd(),
+        outputDir: args.get("output") ?? "docs/generated",
+        mode: parseMode(args.get("mode") ?? "draft"),
+        audience: args.get("audience") ?? "the intended documentation readers",
+        referencePaths: references,
+        referenceDirs,
+        referenceExtensions: referenceExtensions.length > 0
+            ? [...new Set(referenceExtensions)]
+            : [".md", ".rst", ".tex"],
+        extensionPaths: extensions,
+        enabledTools: tools,
+        templatePath: args.get("template"),
+        draftPath: args.get("draft"),
+        authPath: args.get("auth-file"),
+        modelsPath: args.get("models-file"),
+        sessionDir: args.get("session-dir"),
+        sessionFile: args.get("session-file"),
+        persistSession: args.get("persist-session") === "true",
+        resume: args.get("resume") === "true",
+        verbose: args.get("verbose") === "true",
+        model: runtime === "pi" ? parseModel(rawModel) : undefined,
+        copilotModel: runtime === "copilot" ? rawModel : undefined,
+        providedOptions: [...providedOptions],
+    };
+}
+function parseRuntime(value) {
+    if (value === "pi" || value === "copilot") {
+        return value;
+    }
+    throw new Error(`Invalid runtime "${value}". Use one of: pi, copilot`);
+}
+function parseReferenceExtensions(value) {
+    return value
+        .split(",")
+        .map((extension) => extension.trim())
+        .filter((extension) => extension.length > 0)
+        .map((extension) => (extension.startsWith(".") ? extension : `.${extension}`));
+}
+function parseModel(value) {
+    if (!value) {
+        return undefined;
+    }
+    const separatorIndex = value.indexOf("/");
+    if (separatorIndex === -1 || separatorIndex === 0 || separatorIndex === value.length - 1) {
+        throw new Error(`Invalid --model "${value}". Use provider/model-id.`);
+    }
+    return {
+        provider: value.slice(0, separatorIndex),
+        id: value.slice(separatorIndex + 1),
+    };
+}
+function parseMode(value) {
+    const validModes = new Set([
+        "overview",
+        "api",
+        "architecture",
+        "onboarding",
+        "draft",
+        "full",
+    ]);
+    if (!validModes.has(value)) {
+        throw new Error(`Invalid mode "${value}". Use one of: ${Array.from(validModes).join(", ")}`);
+    }
+    return value;
+}
+async function main() {
+    const args = parseArgs(process.argv.slice(2));
+    const workspacePath = await realpath(resolve(args.workspacePath));
+    const outputDir = resolve(workspacePath, args.outputDir);
+    const explicitReferencePaths = await Promise.all(args.referencePaths.map((path) => realpath(resolve(workspacePath, path))));
+    const referenceDirPaths = await Promise.all(args.referenceDirs.map((path) => realpath(resolve(workspacePath, path))));
+    const discoveredReferencePaths = await collectReferenceFiles(referenceDirPaths, args.referenceExtensions);
+    const referencePaths = [...new Set([...explicitReferencePaths, ...discoveredReferencePaths])];
+    const extensionPaths = await Promise.all(args.extensionPaths.map((path) => realpath(resolve(workspacePath, path))));
+    const templatePath = args.templatePath
+        ? await realpath(resolve(workspacePath, args.templatePath))
+        : undefined;
+    const draftPath = args.draftPath
+        ? await realpath(resolve(workspacePath, args.draftPath))
+        : undefined;
+    const authPath = args.authPath ? await realpath(resolve(workspacePath, args.authPath)) : undefined;
+    const modelsPath = args.modelsPath
+        ? await realpath(resolve(workspacePath, args.modelsPath))
+        : undefined;
+    const sessionDir = args.sessionDir ? resolve(workspacePath, args.sessionDir) : undefined;
+    const sessionFile = args.sessionFile
+        ? await realpath(resolve(workspacePath, args.sessionFile))
+        : undefined;
+    await mkdir(outputDir, { recursive: true });
+    const options = {
+        ...args,
+        workspacePath,
+        outputDir,
+        referencePaths,
+        extensionPaths,
+        templatePath,
+        draftPath,
+        authPath,
+        modelsPath,
+        sessionDir,
+        sessionFile,
+    };
+    process.stderr.write("Interactive documentation session started. Type /exit to finish.\n\n");
+    const result = options.runtime === "copilot"
+        ? await runInteractiveCopilotDocumentationHarness(options)
+        : await runInteractiveDocumentationHarness(options);
+    process.stderr.write(`\nDone. Session: ${result.sessionId}\n`);
+    if (result.sessionFile) {
+        process.stderr.write(`Session file: ${result.sessionFile}\n`);
+    }
+}
+async function collectReferenceFiles(directories, extensions) {
+    const extensionSet = new Set(extensions.map((extension) => extension.toLowerCase()));
+    const files = [];
+    for (const directory of directories) {
+        await collectReferenceFilesFromDirectory(directory, extensionSet, files);
+    }
+    return files.sort();
+}
+async function collectReferenceFilesFromDirectory(directory, extensions, files) {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = resolve(directory, entry.name);
+        if (entry.isDirectory()) {
+            await collectReferenceFilesFromDirectory(fullPath, extensions, files);
+            continue;
+        }
+        if (!entry.isFile()) {
+            continue;
+        }
+        const info = await stat(fullPath);
+        if (!info.isFile()) {
+            continue;
+        }
+        const extension = extname(entry.name).toLowerCase();
+        if (extensions.has(extension)) {
+            files.push(await realpath(fullPath));
+        }
+    }
+}
+main().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`Error: ${message}\n`);
+    process.exitCode = 1;
+});

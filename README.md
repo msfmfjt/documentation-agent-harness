@@ -43,6 +43,8 @@ doc-harness \
 
 Node.js `22.19.0` or newer is required.
 
+The GitHub installation uses the committed `dist/` files, so it does not run a TypeScript build on the installing machine.
+
 ## Usage
 
 ```bash
