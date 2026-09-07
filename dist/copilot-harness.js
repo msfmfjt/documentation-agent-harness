@@ -192,7 +192,7 @@ function createCopilotListDocumentsTool(readableDocuments) {
 function createCopilotReadDocumentTool(options, readableDocuments) {
     return {
         name: "read_document",
-        description: "Read a provided template, reference, draft, or generated documentation file. Source code files are not readable through this tool.",
+        description: "Read a provided template, reference, draft, or generated documentation file by line range. Source code files are not readable through this tool.",
         defer: "never",
         parameters: {
             type: "object",
@@ -200,6 +200,14 @@ function createCopilotReadDocumentTool(options, readableDocuments) {
                 path: {
                     type: "string",
                     description: "Document path to read. Use a path shown by list_documents, or a path relative to the documentation output directory for generated files.",
+                },
+                startLine: {
+                    type: "number",
+                    description: "One-based line number to start reading from. Defaults to 1.",
+                },
+                lineCount: {
+                    type: "number",
+                    description: "Number of lines to read. Defaults to 200 and is capped at 400.",
                 },
             },
             required: ["path"],
@@ -213,9 +221,11 @@ function createCopilotReadDocumentTool(options, readableDocuments) {
             }
             try {
                 const content = await readFile(resolvedPath, "utf8");
+                const lineRange = getLineRange(args);
+                const formattedContent = formatDocumentLineRange(content, lineRange.startLine, lineRange.lineCount);
                 return {
                     resultType: "success",
-                    textResultForLlm: content,
+                    textResultForLlm: formattedContent,
                 };
             }
             catch (error) {
@@ -223,6 +233,27 @@ function createCopilotReadDocumentTool(options, readableDocuments) {
             }
         },
     };
+}
+function getLineRange(args) {
+    const startLine = Number.isFinite(args.startLine) && args.startLine ? Math.max(1, Math.floor(args.startLine)) : 1;
+    const requestedLineCount = Number.isFinite(args.lineCount) && args.lineCount ? Math.max(1, Math.floor(args.lineCount)) : 200;
+    return {
+        startLine,
+        lineCount: Math.min(requestedLineCount, 400),
+    };
+}
+function formatDocumentLineRange(content, startLine, lineCount) {
+    const lines = content.split(/\r?\n/);
+    const startIndex = Math.max(0, startLine - 1);
+    const selectedLines = lines.slice(startIndex, startIndex + lineCount);
+    const endLine = selectedLines.length === 0 ? startLine - 1 : startLine + selectedLines.length - 1;
+    const header = [
+        `Lines ${startLine}-${endLine} of ${lines.length}.`,
+        endLine < lines.length ? `More content is available from startLine ${endLine + 1}.` : "End of document.",
+        "",
+    ];
+    const body = selectedLines.map((line, index) => `${startLine + index}: ${line}`);
+    return [...header, ...body].join("\n");
 }
 function createCopilotRecordDecisionTool(decisionLogPath) {
     return {

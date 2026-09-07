@@ -110,7 +110,7 @@ Final documentation files are written through the built-in harness tool `write_d
 
 Decision log entries are written through the built-in harness tool `record_decision`. By default, entries are appended to `docs/generated/decisions.md` when `--output` is left at its default. The log is intended to stay concise and AI-friendly for session resume, review, and later editing.
 
-When using the Copilot runtime, the harness also provides `list_documents` and `read_document`. These tools allow the agent to read only the configured template, references, draft, and generated documentation files.
+When using the Copilot runtime, the harness also provides `list_documents` and `read_document`. These tools allow the agent to read only the configured template, references, draft, and generated documentation files. `read_document` reads by line range so long documents can be inspected in chunks instead of relying on a short preview.
 
 ## Session Resume
 
