@@ -35,6 +35,7 @@ export interface DocumentationHarnessOptions {
   readonly modelsPath?: string;
   readonly copilotCliPath?: string;
   readonly copilotHome?: string;
+  readonly copilotGithubTokenEnv?: string;
   readonly sessionDir?: string;
   readonly sessionFile?: string;
   readonly persistSession: boolean;

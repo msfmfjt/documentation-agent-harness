@@ -67,6 +67,7 @@ function parseArgs(argv) {
         modelsPath: args.get("models-file"),
         copilotCliPath: args.get("copilot-cli-path") ?? process.env.COPILOT_CLI_PATH,
         copilotHome: args.get("copilot-home") ?? process.env.COPILOT_HOME,
+        copilotGithubTokenEnv: args.get("copilot-github-token-env"),
         sessionDir: args.get("session-dir"),
         sessionFile: args.get("session-file"),
         persistSession: args.get("persist-session") === "true",
@@ -157,6 +158,7 @@ async function main() {
         modelsPath,
         copilotCliPath,
         copilotHome,
+        copilotGithubTokenEnv: args.copilotGithubTokenEnv,
         sessionDir,
         sessionFile,
     };

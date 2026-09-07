@@ -79,6 +79,7 @@ Options:
 - `--auth-file`: Path to a custom Pi `auth.json` file.
 - `--copilot-cli-path`: Path to a Copilot CLI executable to use with Copilot runtime. Can also be set with `COPILOT_CLI_PATH`.
 - `--copilot-home`: Copilot runtime home directory. Can also be set with `COPILOT_HOME`.
+- `--copilot-github-token-env`: Name of an environment variable that contains a GitHub token for Copilot SDK authentication. The token value is never printed.
 - `--persist-session`: Save the session so it can be resumed later.
 - `--resume`: Continue the most recent persisted session for the workspace.
 - `--session-file`: Resume a specific Pi session JSONL file.
@@ -277,6 +278,20 @@ On Windows, pass the full user profile path when needed:
 doc-harness `
   --runtime copilot `
   --copilot-home "C:\Users\<user>\.copilot" `
+  --workspace "C:\path\to\project" `
+  --template docs\templates\document-template.md `
+  --reference-dir docs\references `
+  --output docs\generated
+```
+
+If the runtime cannot read the saved login state, authenticate with a GitHub token instead. The token needs the fine-grained `Copilot Requests` permission:
+
+```powershell
+$env:COPILOT_SDK_GITHUB_TOKEN = "<token>"
+
+doc-harness `
+  --runtime copilot `
+  --copilot-github-token-env COPILOT_SDK_GITHUB_TOKEN `
   --workspace "C:\path\to\project" `
   --template docs\templates\document-template.md `
   --reference-dir docs\references `

@@ -15,11 +15,14 @@ export async function runInteractiveCopilotDocumentationHarness(options) {
     const { CopilotClient, RuntimeConnection } = await import("@github/copilot-sdk");
     const copilotCliPath = await resolveCopilotCliPath(options.copilotCliPath);
     const baseDirectory = getCopilotBaseDirectory(options.copilotHome);
+    const githubToken = getGithubTokenFromEnvironment(options.copilotGithubTokenEnv);
     logVerbose(options, `Copilot CLI path: ${copilotCliPath}`);
     logVerbose(options, `Copilot base directory: ${baseDirectory}`);
+    logVerbose(options, `Copilot GitHub token env: ${options.copilotGithubTokenEnv ? `${options.copilotGithubTokenEnv} (${githubToken ? "set" : "unset"})` : "(none)"}`);
     const client = new CopilotClient({
         baseDirectory,
         connection: RuntimeConnection.forStdio({ path: copilotCliPath }),
+        gitHubToken: githubToken,
         logLevel: options.verbose ? "debug" : undefined,
         mode: "empty",
         workingDirectory: options.workspacePath,
@@ -82,6 +85,13 @@ export async function runInteractiveCopilotDocumentationHarness(options) {
 }
 function getCopilotBaseDirectory(explicitHome) {
     return explicitHome ?? resolve(homedir(), ".copilot");
+}
+function getGithubTokenFromEnvironment(envName) {
+    if (!envName) {
+        return undefined;
+    }
+    const token = process.env[envName];
+    return token && token.trim().length > 0 ? token : undefined;
 }
 async function resolveCopilotCliPath(explicitPath) {
     if (explicitPath) {
