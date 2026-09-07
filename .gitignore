@@ -1,5 +1,4 @@
 node_modules/
 .DS_Store
-.doc-harness/
 docs/generated/
 AGENTS.md

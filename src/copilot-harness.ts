@@ -2,6 +2,7 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import type {
@@ -52,7 +53,7 @@ export async function runInteractiveCopilotDocumentationHarness(
 
   const { CopilotClient, RuntimeConnection } = await import("@github/copilot-sdk");
   const copilotCliPath = await resolveCopilotCliPath(options.copilotCliPath);
-  const baseDirectory = options.sessionDir ?? resolve(options.workspacePath, ".doc-harness", "copilot");
+  const baseDirectory = getCopilotBaseDirectory();
   logVerbose(options, `Copilot CLI path: ${copilotCliPath}`);
   logVerbose(options, `Copilot base directory: ${baseDirectory}`);
 
@@ -118,6 +119,10 @@ export async function runInteractiveCopilotDocumentationHarness(
     await session.disconnect();
     await client.stop();
   }
+}
+
+function getCopilotBaseDirectory(): string {
+  return process.env.COPILOT_HOME ?? resolve(homedir(), ".copilot");
 }
 
 async function resolveCopilotCliPath(explicitPath: string | undefined): Promise<string> {

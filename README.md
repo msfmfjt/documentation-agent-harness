@@ -257,7 +257,7 @@ doc-harness \
 Pi-specific options such as `--extension`, `--models-file`, and `--auth-file` apply only to the Pi runtime.
 
 The Copilot runtime supports `@github/copilot-sdk` `1.0.11` or newer.
-By default, Copilot runtime state is stored under `.doc-harness/copilot` in the workspace. Use `--session-dir` to choose a different location.
+By default, the Copilot runtime uses `COPILOT_HOME` when set, otherwise `~/.copilot`, so it can reuse the login state created by `copilot /login`.
 
 If startup fails with `Could not resolve a @github/copilot platform package`, make sure optional dependencies are installed. Do not install this package with `--omit=optional` or `--no-optional`. You can also point the harness at an existing Copilot CLI executable:
 
