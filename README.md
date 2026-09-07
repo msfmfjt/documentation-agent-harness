@@ -157,6 +157,26 @@ doc-harness \
 
 Verbose output includes resolved reference paths, resolved extension paths, extension load errors, registered providers, available models, and the selected model. It does not print API keys.
 
+If a custom provider appears in verbose output but its models do not, check where the extension registers models. Dynamic model discovery should run in the async extension factory so models are available before the harness selects `--model`:
+
+```typescript
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default async function (pi: ExtensionAPI) {
+  const models = await fetchModelsFromYourProvider();
+
+  pi.registerProvider("custom-provider", {
+    name: "Custom Provider",
+    baseUrl: "https://gateway.example.com/v1",
+    apiKey: "$CUSTOM_PROVIDER_API_KEY",
+    api: "openai-completions",
+    models,
+  });
+}
+```
+
+Avoid registering dynamically discovered models only from a `session_start` handler. In SDK-driven startup, the harness must select a model before sending the first prompt, so models registered later may not be available in time.
+
 ## Project Structure
 
 - `src/cli.ts`: Parses CLI arguments, prepares the output directory, and starts the interactive session.

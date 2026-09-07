@@ -117,6 +117,7 @@ export async function runInteractiveDocumentationHarness(
     "Models after session startup",
     modelRuntime.getModels().map((model) => `${model.provider}/${model.id}`),
   );
+  logVerboseProviderDiagnostics(options, modelRuntime);
 
   const unsubscribe = session.subscribe((event) => {
     if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
@@ -182,5 +183,44 @@ function logVerboseList(
   process.stderr.write(`[verbose] ${label}: ${values.length}\n`);
   for (const value of values) {
     process.stderr.write(`[verbose]   - ${value}\n`);
+  }
+}
+
+function logVerboseProviderDiagnostics(
+  options: DocumentationHarnessOptions,
+  modelRuntime: ModelRuntime,
+): void {
+  if (!options.verbose) {
+    return;
+  }
+
+  const providerIds = modelRuntime.getRegisteredProviderIds();
+  for (const providerId of providerIds) {
+    const models = modelRuntime.getModels(providerId);
+    process.stderr.write(`[verbose] Provider ${providerId} model count: ${models.length}\n`);
+    const config = modelRuntime.getRegisteredProviderConfig(providerId);
+    if (config && "models" in config && Array.isArray(config.models)) {
+      process.stderr.write(
+        `[verbose] Provider ${providerId} registered config model count: ${config.models.length}\n`,
+      );
+    }
+  }
+
+  if (!options.model) {
+    return;
+  }
+
+  const requestedProviderModels = modelRuntime.getModels(options.model.provider);
+  if (requestedProviderModels.length === 0 && providerIds.includes(options.model.provider)) {
+    process.stderr.write(
+      `[verbose] Requested provider ${options.model.provider} is registered, but it has no models. If the extension discovers models dynamically, fetch and register them in the async extension factory instead of a session_start handler.\n`,
+    );
+  }
+
+  const requestedModel = modelRuntime.getModel(options.model.provider, options.model.id);
+  if (!requestedModel) {
+    process.stderr.write(
+      `[verbose] Requested model ${options.model.provider}/${options.model.id} is not registered.\n`,
+    );
   }
 }
