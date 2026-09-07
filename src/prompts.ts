@@ -46,6 +46,8 @@ export function buildInitialDocumentationPrompt(options: DocumentationPromptOpti
     "- Keep each question round short: ask no more than five questions at a time.",
     "- Track assumptions, open questions, and decisions as you go.",
     "- Ask for confirmation before writing or editing files.",
+    "- Write final documentation files with the write_document tool.",
+    "- When using write_document, pass a path relative to the documentation output directory, not an absolute path.",
     "- Write files only inside the documentation output directory.",
     "- When required information is missing from the references, mark the gap explicitly and ask the user for input.",
     "",

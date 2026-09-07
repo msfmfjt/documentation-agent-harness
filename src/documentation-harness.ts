@@ -1,12 +1,16 @@
 import {
   createAgentSession,
+  createWriteToolDefinition,
   DefaultResourceLoader,
+  defineTool,
   getAgentDir,
   ModelRuntime,
   SessionManager,
   SettingsManager,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
@@ -60,7 +64,9 @@ export async function runInteractiveDocumentationHarness(
   logVerbose(options, `Draft: ${options.draftPath ?? "(none)"}`);
   logVerboseList(options, "References", options.referencePaths);
   logVerboseList(options, "Extensions", options.extensionPaths);
-  logVerboseList(options, "Enabled tools", ["read", "write", "edit", ...options.enabledTools]);
+  const documentWriteTool = createDocumentWriteTool(options.outputDir);
+  const activeTools = [...new Set(["read", "edit", documentWriteTool.name, ...options.enabledTools])];
+  logVerboseList(options, "Enabled tools", activeTools);
   logVerbose(options, `Models file: ${options.modelsPath ?? "(default)"}`);
   logVerbose(options, `Auth file: ${options.authPath ?? "(default)"}`);
   logVerbose(options, `Session mode: ${describeSessionMode(options)}`);
@@ -126,7 +132,8 @@ export async function runInteractiveDocumentationHarness(
     sessionManager,
     settingsManager,
     thinkingLevel: options.thinkingLevel ?? "medium",
-    tools: [...new Set(["read", "write", "edit", ...options.enabledTools])],
+    tools: activeTools,
+    customTools: [documentWriteTool],
   });
   logVerboseList(options, "Providers after session startup", modelRuntime.getRegisteredProviderIds());
   logVerboseList(
@@ -181,6 +188,50 @@ export async function runInteractiveDocumentationHarness(
     unsubscribe();
     session.dispose();
   }
+}
+
+function createDocumentWriteTool(outputDir: string): ToolDefinition {
+  const baseTool = createWriteToolDefinition(outputDir);
+
+  return defineTool({
+    ...baseTool,
+    name: "write_document",
+    label: "write document",
+    description:
+      "Create or overwrite a documentation output file. The path must be relative to the configured documentation output directory.",
+    promptSnippet: "Create or overwrite documentation files inside the configured output directory",
+    promptGuidelines: [
+      "Use write_document for final documentation output files.",
+      "Pass a path relative to the documentation output directory.",
+      "Do not pass absolute paths or paths that leave the documentation output directory.",
+    ],
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const targetPath = params.path.trim();
+      if (!targetPath) {
+        return documentWriteError("Document path must not be empty.");
+      }
+      if (isAbsolute(targetPath)) {
+        return documentWriteError("Document path must be relative to the output directory.");
+      }
+
+      const resolvedOutputDir = resolve(outputDir);
+      const resolvedTarget = resolve(resolvedOutputDir, targetPath);
+      const relativeTarget = relative(resolvedOutputDir, resolvedTarget);
+      if (relativeTarget.startsWith("..") || isAbsolute(relativeTarget)) {
+        return documentWriteError("Document path must stay inside the output directory.");
+      }
+
+      return baseTool.execute(toolCallId, params, signal, onUpdate, ctx);
+    },
+  });
+}
+
+function documentWriteError(message: string) {
+  return {
+    content: [{ type: "text" as const, text: message }],
+    details: undefined,
+    isError: true,
+  };
 }
 
 interface SessionMetadata {
