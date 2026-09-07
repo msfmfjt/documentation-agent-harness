@@ -76,6 +76,7 @@ Options:
 - `--auth-file`: Path to a custom Pi `auth.json` file.
 - `--extension`: Pi extension file to load. Can be specified multiple times.
 - `--tool`: Additional tool name to enable. Use this when an extension registers a custom tool.
+- `--verbose`: Print debugging details about resolved paths, loaded extensions, providers, models, and selected model.
 - `--audience`: Initial target audience. The audience can be revised during the session.
 
 Default reference extensions are `.md`, `.rst`, and `.tex`.
@@ -140,6 +141,21 @@ npm run doc -- \
 ```
 
 If an extension registers custom tools, pass each tool name with `--tool`. The built-in documentation workflow enables only `read`, `write`, and `edit` by default.
+
+Use `--verbose` when debugging custom provider loading:
+
+```bash
+doc-harness \
+  --workspace /path/to/project \
+  --template docs/templates/document-template.md \
+  --reference-dir docs/references \
+  --extension /absolute/path/to/provider-extension.ts \
+  --model custom-provider/custom-model \
+  --output docs/generated \
+  --verbose
+```
+
+Verbose output includes resolved reference paths, resolved extension paths, extension load errors, registered providers, available models, and the selected model. It does not print API keys.
 
 ## Project Structure
 

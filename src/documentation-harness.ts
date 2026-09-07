@@ -27,6 +27,7 @@ export interface DocumentationHarnessOptions {
   readonly draftPath?: string;
   readonly authPath?: string;
   readonly modelsPath?: string;
+  readonly verbose: boolean;
   readonly model?: {
     readonly provider: string;
     readonly id: string;
@@ -42,6 +43,21 @@ export interface DocumentationHarnessResult {
 export async function runInteractiveDocumentationHarness(
   options: DocumentationHarnessOptions,
 ): Promise<DocumentationHarnessResult> {
+  logVerbose(options, "Starting documentation harness");
+  logVerbose(options, `Workspace: ${options.workspacePath}`);
+  logVerbose(options, `Output directory: ${options.outputDir}`);
+  logVerbose(options, `Template: ${options.templatePath ?? "(none)"}`);
+  logVerbose(options, `Draft: ${options.draftPath ?? "(none)"}`);
+  logVerboseList(options, "References", options.referencePaths);
+  logVerboseList(options, "Extensions", options.extensionPaths);
+  logVerboseList(options, "Enabled tools", ["read", "write", "edit", ...options.enabledTools]);
+  logVerbose(options, `Models file: ${options.modelsPath ?? "(default)"}`);
+  logVerbose(options, `Auth file: ${options.authPath ?? "(default)"}`);
+  logVerbose(
+    options,
+    `Requested model: ${options.model ? `${options.model.provider}/${options.model.id}` : "(default)"}`,
+  );
+
   const modelRuntime = await ModelRuntime.create({
     authPath: options.authPath,
     modelsPath: options.modelsPath,
@@ -54,6 +70,13 @@ export async function runInteractiveDocumentationHarness(
   const initialModel = options.model
     ? modelRuntime.getModel(options.model.provider, options.model.id)
     : undefined;
+  if (options.model && !initialModel) {
+    logVerbose(
+      options,
+      "Requested model was not found before extension loading. It will be resolved again after session startup.",
+    );
+  }
+  logVerboseList(options, "Providers before extension loading", modelRuntime.getRegisteredProviderIds());
 
   const loader = new DefaultResourceLoader({
     agentDir: getAgentDir(),
@@ -63,6 +86,20 @@ export async function runInteractiveDocumentationHarness(
     systemPromptOverride: () => documentationSystemPrompt,
   });
   await loader.reload();
+  const extensionsResult = loader.getExtensions();
+  logVerbose(
+    options,
+    `Loaded extensions: ${extensionsResult.extensions.length}`,
+  );
+  for (const extension of extensionsResult.extensions) {
+    logVerbose(options, `  - ${extension.resolvedPath}`);
+  }
+  if (extensionsResult.errors.length > 0) {
+    logVerbose(options, `Extension load errors: ${extensionsResult.errors.length}`);
+    for (const error of extensionsResult.errors) {
+      logVerbose(options, `  - ${error.path}: ${error.error}`);
+    }
+  }
 
   const { session } = await createAgentSession({
     cwd: options.workspacePath,
@@ -74,6 +111,12 @@ export async function runInteractiveDocumentationHarness(
     thinkingLevel: options.thinkingLevel ?? "medium",
     tools: [...new Set(["read", "write", "edit", ...options.enabledTools])],
   });
+  logVerboseList(options, "Providers after session startup", modelRuntime.getRegisteredProviderIds());
+  logVerboseList(
+    options,
+    "Models after session startup",
+    modelRuntime.getModels().map((model) => `${model.provider}/${model.id}`),
+  );
 
   const unsubscribe = session.subscribe((event) => {
     if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
@@ -93,6 +136,7 @@ export async function runInteractiveDocumentationHarness(
         throw new Error(`Model not found: ${options.model.provider}/${options.model.id}`);
       }
       await session.setModel(selectedModel);
+      logVerbose(options, `Selected model: ${selectedModel.provider}/${selectedModel.id}`);
     }
 
     await session.prompt(buildInitialDocumentationPrompt(options));
@@ -117,5 +161,26 @@ export async function runInteractiveDocumentationHarness(
     terminal.close();
     unsubscribe();
     session.dispose();
+  }
+}
+
+function logVerbose(options: DocumentationHarnessOptions, message: string): void {
+  if (options.verbose) {
+    process.stderr.write(`[verbose] ${message}\n`);
+  }
+}
+
+function logVerboseList(
+  options: DocumentationHarnessOptions,
+  label: string,
+  values: readonly string[],
+): void {
+  if (!options.verbose) {
+    return;
+  }
+
+  process.stderr.write(`[verbose] ${label}: ${values.length}\n`);
+  for (const value of values) {
+    process.stderr.write(`[verbose]   - ${value}\n`);
   }
 }

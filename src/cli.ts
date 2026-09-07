@@ -23,6 +23,7 @@ interface CliArgs {
   readonly draftPath?: string;
   readonly authPath?: string;
   readonly modelsPath?: string;
+  readonly verbose: boolean;
   readonly model?: {
     readonly provider: string;
     readonly id: string;
@@ -44,6 +45,11 @@ function parseArgs(argv: readonly string[]): CliArgs {
     }
 
     const key = token.slice(2);
+    if (key === "verbose") {
+      args.set(key, "true");
+      continue;
+    }
+
     const value = argv[index + 1];
     if (!value || value.startsWith("--")) {
       throw new Error(`Missing value for --${key}`);
@@ -81,6 +87,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     draftPath: args.get("draft"),
     authPath: args.get("auth-file"),
     modelsPath: args.get("models-file"),
+    verbose: args.get("verbose") === "true",
     model: parseModel(args.get("model")),
   };
 }
