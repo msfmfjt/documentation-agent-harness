@@ -27,6 +27,10 @@ export interface DocumentationHarnessOptions {
   readonly draftPath?: string;
   readonly authPath?: string;
   readonly modelsPath?: string;
+  readonly sessionDir?: string;
+  readonly sessionFile?: string;
+  readonly persistSession: boolean;
+  readonly resume: boolean;
   readonly verbose: boolean;
   readonly model?: {
     readonly provider: string;
@@ -53,6 +57,9 @@ export async function runInteractiveDocumentationHarness(
   logVerboseList(options, "Enabled tools", ["read", "write", "edit", ...options.enabledTools]);
   logVerbose(options, `Models file: ${options.modelsPath ?? "(default)"}`);
   logVerbose(options, `Auth file: ${options.authPath ?? "(default)"}`);
+  logVerbose(options, `Session mode: ${describeSessionMode(options)}`);
+  logVerbose(options, `Session dir: ${options.sessionDir ?? "(default)"}`);
+  logVerbose(options, `Session file: ${options.sessionFile ?? "(none)"}`);
   logVerbose(
     options,
     `Requested model: ${options.model ? `${options.model.provider}/${options.model.id}` : "(default)"}`,
@@ -101,12 +108,15 @@ export async function runInteractiveDocumentationHarness(
     }
   }
 
+  const sessionManager = createSessionManager(options);
+  logVerbose(options, `Resolved session file: ${sessionManager.getSessionFile() ?? "(none)"}`);
+
   const { session } = await createAgentSession({
     cwd: options.workspacePath,
     model: initialModel,
     modelRuntime,
     resourceLoader: loader,
-    sessionManager: SessionManager.inMemory(options.workspacePath),
+    sessionManager,
     settingsManager,
     thinkingLevel: options.thinkingLevel ?? "medium",
     tools: [...new Set(["read", "write", "edit", ...options.enabledTools])],
@@ -163,6 +173,35 @@ export async function runInteractiveDocumentationHarness(
     unsubscribe();
     session.dispose();
   }
+}
+
+function createSessionManager(options: DocumentationHarnessOptions): SessionManager {
+  if (options.sessionFile) {
+    return SessionManager.open(options.sessionFile, options.sessionDir, options.workspacePath);
+  }
+
+  if (options.resume) {
+    return SessionManager.continueRecent(options.workspacePath, options.sessionDir);
+  }
+
+  if (options.persistSession) {
+    return SessionManager.create(options.workspacePath, options.sessionDir);
+  }
+
+  return SessionManager.inMemory(options.workspacePath);
+}
+
+function describeSessionMode(options: DocumentationHarnessOptions): string {
+  if (options.sessionFile) {
+    return "session-file";
+  }
+  if (options.resume) {
+    return "resume";
+  }
+  if (options.persistSession) {
+    return "persistent";
+  }
+  return "in-memory";
 }
 
 function logVerbose(options: DocumentationHarnessOptions, message: string): void {

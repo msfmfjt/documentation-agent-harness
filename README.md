@@ -74,6 +74,10 @@ Options:
 - `--model`: Model to use, in `provider/model-id` format.
 - `--models-file`: Path to a custom Pi `models.json` file.
 - `--auth-file`: Path to a custom Pi `auth.json` file.
+- `--persist-session`: Save the session so it can be resumed later.
+- `--resume`: Continue the most recent persisted session for the workspace.
+- `--session-file`: Resume a specific Pi session JSONL file.
+- `--session-dir`: Directory for persisted sessions. Defaults to Pi's workspace-specific session directory.
 - `--extension`: Pi extension file to load. Can be specified multiple times.
 - `--tool`: Additional tool name to enable. Use this when an extension registers a custom tool.
 - `--verbose`: Print debugging details about resolved paths, loaded extensions, providers, models, and selected model.
@@ -92,6 +96,37 @@ See [docs/template-authoring.md](docs/template-authoring.md) for guidance on wri
 5. The agent revises the section.
 6. The same loop continues for each section.
 7. After user approval, the agent creates or edits the Markdown file.
+
+## Session Resume
+
+By default, sessions are in-memory and disappear when the process exits. Use `--persist-session` when you want to resume a drafting session later:
+
+```bash
+doc-harness \
+  --workspace /path/to/project \
+  --template docs/templates/document-template.md \
+  --reference-dir docs/references \
+  --output docs/generated \
+  --persist-session
+```
+
+At exit, the CLI prints the session file path. Resume the most recent persisted session for the workspace with:
+
+```bash
+doc-harness \
+  --workspace /path/to/project \
+  --resume
+```
+
+Resume a specific session file with:
+
+```bash
+doc-harness \
+  --workspace /path/to/project \
+  --session-file /path/to/session.jsonl
+```
+
+Use the same template, reference, model, and extension options when resuming if the draft still depends on those inputs.
 
 ## Example
 

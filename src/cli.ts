@@ -23,6 +23,10 @@ interface CliArgs {
   readonly draftPath?: string;
   readonly authPath?: string;
   readonly modelsPath?: string;
+  readonly sessionDir?: string;
+  readonly sessionFile?: string;
+  readonly persistSession: boolean;
+  readonly resume: boolean;
   readonly verbose: boolean;
   readonly model?: {
     readonly provider: string;
@@ -45,7 +49,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     }
 
     const key = token.slice(2);
-    if (key === "verbose") {
+    if (key === "verbose" || key === "persist-session" || key === "resume") {
       args.set(key, "true");
       continue;
     }
@@ -87,6 +91,10 @@ function parseArgs(argv: readonly string[]): CliArgs {
     draftPath: args.get("draft"),
     authPath: args.get("auth-file"),
     modelsPath: args.get("models-file"),
+    sessionDir: args.get("session-dir"),
+    sessionFile: args.get("session-file"),
+    persistSession: args.get("persist-session") === "true",
+    resume: args.get("resume") === "true",
     verbose: args.get("verbose") === "true",
     model: parseModel(args.get("model")),
   };
@@ -159,6 +167,10 @@ async function main(): Promise<void> {
   const modelsPath = args.modelsPath
     ? await realpath(resolve(workspacePath, args.modelsPath))
     : undefined;
+  const sessionDir = args.sessionDir ? resolve(workspacePath, args.sessionDir) : undefined;
+  const sessionFile = args.sessionFile
+    ? await realpath(resolve(workspacePath, args.sessionFile))
+    : undefined;
 
   await mkdir(outputDir, { recursive: true });
 
@@ -172,6 +184,8 @@ async function main(): Promise<void> {
     draftPath,
     authPath,
     modelsPath,
+    sessionDir,
+    sessionFile,
   };
 
   process.stderr.write("Interactive documentation session started. Type /exit to finish.\n\n");
