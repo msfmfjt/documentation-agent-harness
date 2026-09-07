@@ -32,6 +32,11 @@ jobs:
       - name: Check package contents
         run: npm pack --dry-run
 
+      - name: Smoke test Copilot runtime startup
+        shell: pwsh
+        run: |
+          node -e "import { fileURLToPath } from 'node:url'; import { dirname, join, resolve } from 'node:path'; import { access } from 'node:fs/promises'; import('@github/copilot-sdk').then(async ({ CopilotClient, RuntimeConnection }) => { const variants = process.platform === 'linux' ? ['linux', 'linuxmusl'] : [process.platform]; let runtimePath; for (const variant of variants) { try { const root = dirname(fileURLToPath(import.meta.resolve('@github/copilot-' + variant + '-' + process.arch))); const candidate = join(root, 'index.js'); await access(candidate); runtimePath = candidate; break; } catch {} } if (!runtimePath) throw new Error('Copilot platform package was not found'); const client = new CopilotClient({ baseDirectory: resolve('.doc-harness', 'ci-copilot'), connection: RuntimeConnection.forStdio({ path: runtimePath }), mode: 'empty', workingDirectory: process.cwd() }); await client.start(); await client.stop(); })"
+
       - name: Smoke test CLI startup
         shell: pwsh
         run: |

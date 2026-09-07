@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { access, mkdir, writeFile } from "node:fs/promises";
+import { dirname, join, isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { fileURLToPath } from "node:url";
 
 import type {
   DocumentationHarnessOptions,
@@ -47,14 +48,17 @@ export async function runInteractiveCopilotDocumentationHarness(
   logVerbose(options, `Workspace: ${options.workspacePath}`);
   logVerbose(options, `Output directory: ${options.outputDir}`);
   logVerbose(options, `Model: ${options.copilotModel ?? "auto"}`);
-  logVerbose(options, `Copilot CLI path: ${options.copilotCliPath ?? "(bundled)"}`);
   logVerboseList(options, "References", options.referencePaths);
 
   const { CopilotClient, RuntimeConnection } = await import("@github/copilot-sdk");
+  const copilotCliPath = await resolveCopilotCliPath(options.copilotCliPath);
+  const baseDirectory = options.sessionDir ?? resolve(options.workspacePath, ".doc-harness", "copilot");
+  logVerbose(options, `Copilot CLI path: ${copilotCliPath}`);
+  logVerbose(options, `Copilot base directory: ${baseDirectory}`);
+
   const client = new CopilotClient({
-    connection: options.copilotCliPath
-      ? RuntimeConnection.forStdio({ path: options.copilotCliPath })
-      : undefined,
+    baseDirectory,
+    connection: RuntimeConnection.forStdio({ path: copilotCliPath }),
     logLevel: options.verbose ? "debug" : undefined,
     mode: "empty",
     workingDirectory: options.workspacePath,
@@ -113,6 +117,53 @@ export async function runInteractiveCopilotDocumentationHarness(
     unsubscribeMessage();
     await session.disconnect();
     await client.stop();
+  }
+}
+
+async function resolveCopilotCliPath(explicitPath: string | undefined): Promise<string> {
+  if (explicitPath) {
+    return explicitPath;
+  }
+
+  for (const packageName of getCopilotPlatformPackageNames()) {
+    const packageRoot = await resolvePackageRoot(packageName);
+    if (!packageRoot) {
+      continue;
+    }
+
+    for (const candidate of [
+      join(packageRoot, "index.js"),
+      join(packageRoot, "npm-loader.js"),
+    ]) {
+      if (await canRead(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return "copilot";
+}
+
+function getCopilotPlatformPackageNames(): string[] {
+  const variants = process.platform === "linux" ? ["linux", "linuxmusl"] : [process.platform];
+  return variants.map((variant) => `@github/copilot-${variant}-${process.arch}`);
+}
+
+async function resolvePackageRoot(packageName: string): Promise<string | undefined> {
+  try {
+    const entryPath = fileURLToPath(import.meta.resolve(packageName));
+    return dirname(entryPath);
+  } catch {
+    return undefined;
+  }
+}
+
+async function canRead(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
   }
 }
 
