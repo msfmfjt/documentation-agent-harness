@@ -39,3 +39,4 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             throw "CLI accepted an invalid runtime"
           }
+          exit 0
