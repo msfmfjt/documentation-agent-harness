@@ -64,6 +64,7 @@ Options:
 
 - `--workspace`: Working directory for documentation generation. Defaults to the current directory.
 - `--target`: Legacy alias for `--workspace`.
+- `--runtime`: Agent runtime to use. One of `pi` or `copilot`. Defaults to `pi`.
 - `--output`: Output directory, relative to the workspace or absolute.
 - `--template`: Template that defines the target document sections and required fields.
 - `--reference`: Reference document to use while drafting. Can be specified multiple times.
@@ -71,7 +72,7 @@ Options:
 - `--reference-ext`: Reference file extension to include when using `--reference-dir`. Can be specified multiple times or as a comma-separated list.
 - `--draft`: Existing draft to edit. If omitted, the session assumes a new document.
 - `--mode`: Initial mode. One of `overview`, `api`, `architecture`, `onboarding`, `draft`, or `full`.
-- `--model`: Model to use, in `provider/model-id` format.
+- `--model`: Model to use. For Pi runtime, use `provider/model-id`. For Copilot runtime, use the Copilot model id.
 - `--models-file`: Path to a custom Pi `models.json` file.
 - `--auth-file`: Path to a custom Pi `auth.json` file.
 - `--persist-session`: Save the session so it can be resumed later.
@@ -217,10 +218,46 @@ export default async function (pi: ExtensionAPI) {
 
 Avoid registering dynamically discovered models only from a `session_start` handler. In SDK-driven startup, the harness must select a model before sending the first prompt, so models registered later may not be available in time.
 
+## GitHub Copilot Runtime
+
+The harness can also run through GitHub Copilot SDK while reusing your existing Copilot CLI login state:
+
+```bash
+npm install -g @github/copilot
+copilot
+# Run /login inside Copilot CLI if you are not already signed in.
+```
+
+Then start the harness with `--runtime copilot`:
+
+```bash
+doc-harness \
+  --runtime copilot \
+  --workspace /path/to/project \
+  --template docs/templates/document-template.md \
+  --reference-dir docs/references \
+  --output docs/generated
+```
+
+For Copilot runtime, `--model` is passed directly as the Copilot model id. If omitted, the SDK uses its automatic default model selection:
+
+```bash
+doc-harness \
+  --runtime copilot \
+  --model gpt-5 \
+  --workspace /path/to/project \
+  --template docs/templates/document-template.md \
+  --reference docs/source-material.md \
+  --output docs/generated
+```
+
+Pi-specific options such as `--extension`, `--models-file`, and `--auth-file` apply only to the Pi runtime.
+
 ## Project Structure
 
 - `src/cli.ts`: Parses CLI arguments, prepares the output directory, and starts the interactive session.
 - `src/documentation-harness.ts`: Creates the Pi SDK session and forwards terminal input as user feedback.
+- `src/copilot-harness.ts`: Creates the GitHub Copilot SDK session and forwards terminal input as user feedback.
 - `src/prompts.ts`: Defines the system prompt and initial prompt for template-driven interactive drafting.
 - `docs/template-authoring.md`: Explains how to write templates for the harness.
 - `examples/extensions/openai-compatible-provider.ts`: Minimal custom provider extension for OpenAI-compatible endpoints.

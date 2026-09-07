@@ -21,6 +21,7 @@ import {
 } from "./prompts.js";
 
 export interface DocumentationHarnessOptions {
+  readonly runtime: "pi" | "copilot";
   readonly workspacePath: string;
   readonly outputDir: string;
   readonly mode: DocumentationMode;
@@ -41,6 +42,7 @@ export interface DocumentationHarnessOptions {
     readonly provider: string;
     readonly id: string;
   };
+  readonly copilotModel?: string;
   readonly providedOptions: readonly string[];
   readonly thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 }
@@ -243,6 +245,7 @@ interface SessionMetadata {
 type SessionMetadataOptions = Pick<
   DocumentationHarnessOptions,
   | "workspacePath"
+  | "runtime"
   | "outputDir"
   | "mode"
   | "audience"
@@ -254,6 +257,7 @@ type SessionMetadataOptions = Pick<
   | "modelsPath"
   | "sessionDir"
   | "model"
+  | "copilotModel"
 >;
 
 async function hydrateOptionsFromSessionMetadata(
@@ -275,6 +279,7 @@ async function hydrateOptionsFromSessionMetadata(
 
   return {
     ...options,
+    runtime: providedOptions.has("runtime") ? options.runtime : (saved.runtime ?? "pi"),
     outputDir: providedOptions.has("output") ? options.outputDir : saved.outputDir,
     mode: providedOptions.has("mode") ? options.mode : saved.mode,
     audience: providedOptions.has("audience") ? options.audience : saved.audience,
@@ -289,6 +294,7 @@ async function hydrateOptionsFromSessionMetadata(
     modelsPath: providedOptions.has("models-file") ? options.modelsPath : saved.modelsPath,
     sessionDir: providedOptions.has("session-dir") ? options.sessionDir : saved.sessionDir,
     model: providedOptions.has("model") ? options.model : saved.model,
+    copilotModel: providedOptions.has("model") ? options.copilotModel : saved.copilotModel,
   };
 }
 
@@ -326,6 +332,7 @@ async function writeSessionMetadata(
     savedAt: new Date().toISOString(),
     options: {
       workspacePath: options.workspacePath,
+      runtime: options.runtime,
       outputDir: options.outputDir,
       mode: options.mode,
       audience: options.audience,
@@ -337,6 +344,7 @@ async function writeSessionMetadata(
       modelsPath: options.modelsPath,
       sessionDir: options.sessionDir,
       model: options.model,
+      copilotModel: options.copilotModel,
     },
   };
 

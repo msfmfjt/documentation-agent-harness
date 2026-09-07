@@ -7,9 +7,13 @@ import {
   runInteractiveDocumentationHarness,
   type DocumentationHarnessOptions,
 } from "./documentation-harness.js";
+import { runInteractiveCopilotDocumentationHarness } from "./copilot-harness.js";
 import type { DocumentationMode } from "./prompts.js";
 
+type DocumentationRuntime = "pi" | "copilot";
+
 interface CliArgs {
+  readonly runtime: DocumentationRuntime;
   readonly workspacePath: string;
   readonly outputDir: string;
   readonly mode: DocumentationMode;
@@ -32,6 +36,7 @@ interface CliArgs {
     readonly provider: string;
     readonly id: string;
   };
+  readonly copilotModel?: string;
   readonly providedOptions: readonly string[];
 }
 
@@ -77,7 +82,11 @@ function parseArgs(argv: readonly string[]): CliArgs {
     index += 1;
   }
 
+  const runtime = parseRuntime(args.get("runtime") ?? "pi");
+  const rawModel = args.get("model");
+
   return {
+    runtime,
     workspacePath: args.get("workspace") ?? args.get("target") ?? process.cwd(),
     outputDir: args.get("output") ?? "docs/generated",
     mode: parseMode(args.get("mode") ?? "draft"),
@@ -99,9 +108,17 @@ function parseArgs(argv: readonly string[]): CliArgs {
     persistSession: args.get("persist-session") === "true",
     resume: args.get("resume") === "true",
     verbose: args.get("verbose") === "true",
-    model: parseModel(args.get("model")),
+    model: runtime === "pi" ? parseModel(rawModel) : undefined,
+    copilotModel: runtime === "copilot" ? rawModel : undefined,
     providedOptions: [...providedOptions],
   };
+}
+
+function parseRuntime(value: string): DocumentationRuntime {
+  if (value === "pi" || value === "copilot") {
+    return value;
+  }
+  throw new Error(`Invalid runtime "${value}". Use one of: pi, copilot`);
 }
 
 function parseReferenceExtensions(value: string): string[] {
@@ -193,7 +210,10 @@ async function main(): Promise<void> {
   };
 
   process.stderr.write("Interactive documentation session started. Type /exit to finish.\n\n");
-  const result = await runInteractiveDocumentationHarness(options);
+  const result =
+    options.runtime === "copilot"
+      ? await runInteractiveCopilotDocumentationHarness(options)
+      : await runInteractiveDocumentationHarness(options);
   process.stderr.write(`\nDone. Session: ${result.sessionId}\n`);
   if (result.sessionFile) {
     process.stderr.write(`Session file: ${result.sessionFile}\n`);
