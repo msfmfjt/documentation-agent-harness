@@ -33,6 +33,7 @@ export interface DocumentationHarnessOptions {
   readonly draftPath?: string;
   readonly authPath?: string;
   readonly modelsPath?: string;
+  readonly copilotCliPath?: string;
   readonly sessionDir?: string;
   readonly sessionFile?: string;
   readonly persistSession: boolean;

@@ -65,6 +65,7 @@ function parseArgs(argv) {
         draftPath: args.get("draft"),
         authPath: args.get("auth-file"),
         modelsPath: args.get("models-file"),
+        copilotCliPath: args.get("copilot-cli-path") ?? process.env.COPILOT_CLI_PATH,
         sessionDir: args.get("session-dir"),
         sessionFile: args.get("session-file"),
         persistSession: args.get("persist-session") === "true",
@@ -134,6 +135,9 @@ async function main() {
     const modelsPath = args.modelsPath
         ? await realpath(resolve(workspacePath, args.modelsPath))
         : undefined;
+    const copilotCliPath = args.copilotCliPath
+        ? await realpath(resolve(workspacePath, args.copilotCliPath))
+        : undefined;
     const sessionDir = args.sessionDir ? resolve(workspacePath, args.sessionDir) : undefined;
     const sessionFile = args.sessionFile
         ? await realpath(resolve(workspacePath, args.sessionFile))
@@ -149,6 +153,7 @@ async function main() {
         draftPath,
         authPath,
         modelsPath,
+        copilotCliPath,
         sessionDir,
         sessionFile,
     };

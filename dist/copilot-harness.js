@@ -9,9 +9,13 @@ export async function runInteractiveCopilotDocumentationHarness(options) {
     logVerbose(options, `Workspace: ${options.workspacePath}`);
     logVerbose(options, `Output directory: ${options.outputDir}`);
     logVerbose(options, `Model: ${options.copilotModel ?? "auto"}`);
+    logVerbose(options, `Copilot CLI path: ${options.copilotCliPath ?? "(bundled)"}`);
     logVerboseList(options, "References", options.referencePaths);
-    const { CopilotClient } = await import("@github/copilot-sdk");
+    const { CopilotClient, RuntimeConnection } = await import("@github/copilot-sdk");
     const client = new CopilotClient({
+        connection: options.copilotCliPath
+            ? RuntimeConnection.forStdio({ path: options.copilotCliPath })
+            : undefined,
         logLevel: options.verbose ? "debug" : undefined,
         mode: "empty",
         workingDirectory: options.workspacePath,
