@@ -18,6 +18,18 @@ interface WriteDocumentArgs {
   readonly content: string;
 }
 
+interface AssistantMessageDeltaEvent {
+  readonly data: {
+    readonly deltaContent: string;
+  };
+}
+
+interface SessionErrorEvent {
+  readonly data: {
+    readonly message: string;
+  };
+}
+
 export async function runInteractiveCopilotDocumentationHarness(
   options: DocumentationHarnessOptions,
 ): Promise<DocumentationHarnessResult> {
@@ -56,10 +68,10 @@ export async function runInteractiveCopilotDocumentationHarness(
     workingDirectory: options.workspacePath,
   });
 
-  const unsubscribeMessage = session.on("assistant.message_delta", (event) => {
+  const unsubscribeMessage = session.on("assistant.message_delta", (event: AssistantMessageDeltaEvent) => {
     process.stdout.write(event.data.deltaContent);
   });
-  const unsubscribeError = session.on("session.error", (event) => {
+  const unsubscribeError = session.on("session.error", (event: SessionErrorEvent) => {
     process.stderr.write(`\n[session error] ${event.data.message}\n`);
   });
 
