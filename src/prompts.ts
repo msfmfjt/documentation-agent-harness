@@ -14,6 +14,7 @@ export interface DocumentationPromptOptions {
   readonly referencePaths: readonly string[];
   readonly templatePath?: string;
   readonly draftPath?: string;
+  readonly decisionLogPath?: string;
 }
 
 export function buildInitialDocumentationPrompt(options: DocumentationPromptOptions): string {
@@ -32,6 +33,7 @@ export function buildInitialDocumentationPrompt(options: DocumentationPromptOpti
     `- Initial audience: ${options.audience}`,
     `- Template path: ${options.templatePath ?? "None provided yet"}`,
     `- Existing draft path: ${options.draftPath ?? "None provided yet"}`,
+    `- Decision log path: ${options.decisionLogPath ?? "Disabled"}`,
     "- Reference documents:",
     ...referenceLines,
     "",
@@ -46,6 +48,7 @@ export function buildInitialDocumentationPrompt(options: DocumentationPromptOpti
     "- For each section, propose an editing plan or draft, ask for user feedback, then revise.",
     "- Keep each question round short: ask no more than five questions at a time.",
     "- Track assumptions, open questions, and decisions as you go.",
+    "- Use record_decision when available after the user confirms a direction, resolves an open question, or accepts an assumption.",
     "- Ask for confirmation before writing or editing files.",
     "- Write final documentation files with the write_document tool.",
     "- When using write_document, pass a path relative to the documentation output directory, not an absolute path.",

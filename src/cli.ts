@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, readdir, realpath, stat } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 
 import {
   runInteractiveDocumentationHarness,
@@ -25,6 +25,7 @@ interface CliArgs {
   readonly enabledTools: readonly string[];
   readonly templatePath?: string;
   readonly draftPath?: string;
+  readonly decisionLogPath?: string;
   readonly authPath?: string;
   readonly modelsPath?: string;
   readonly copilotCliPath?: string;
@@ -60,7 +61,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
 
     const key = token.slice(2);
     providedOptions.add(key);
-    if (key === "verbose" || key === "persist-session" || key === "resume") {
+    if (key === "verbose" || key === "persist-session" || key === "resume" || key === "no-decision-log") {
       args.set(key, "true");
       continue;
     }
@@ -104,6 +105,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     enabledTools: tools,
     templatePath: args.get("template"),
     draftPath: args.get("draft"),
+    decisionLogPath: args.get("no-decision-log") === "true" ? undefined : args.get("decision-log") ?? "decisions.md",
     authPath: args.get("auth-file"),
     modelsPath: args.get("models-file"),
     copilotCliPath: args.get("copilot-cli-path") ?? process.env.COPILOT_CLI_PATH,
@@ -190,6 +192,9 @@ async function main(): Promise<void> {
   const draftPath = args.draftPath
     ? await realpath(resolve(workspacePath, args.draftPath))
     : undefined;
+  const decisionLogPath = args.decisionLogPath
+    ? resolveOutputPath(outputDir, args.decisionLogPath)
+    : undefined;
   const authPath = args.authPath ? await realpath(resolve(workspacePath, args.authPath)) : undefined;
   const modelsPath = args.modelsPath
     ? await realpath(resolve(workspacePath, args.modelsPath))
@@ -213,6 +218,7 @@ async function main(): Promise<void> {
     extensionPaths,
     templatePath,
     draftPath,
+    decisionLogPath,
     authPath,
     modelsPath,
     copilotCliPath,
@@ -231,6 +237,16 @@ async function main(): Promise<void> {
   if (result.sessionFile) {
     process.stderr.write(`Session file: ${result.sessionFile}\n`);
   }
+}
+
+function resolveOutputPath(outputDir: string, path: string): string {
+  const resolvedOutputDir = resolve(outputDir);
+  const resolvedPath = isAbsolute(path) ? resolve(path) : resolve(resolvedOutputDir, path);
+  const relativePath = relative(resolvedOutputDir, resolvedPath);
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new Error(`Path must stay inside the output directory: ${path}`);
+  }
+  return resolvedPath;
 }
 
 async function collectReferenceFiles(

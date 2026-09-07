@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { mkdir, readdir, realpath, stat } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 import { runInteractiveDocumentationHarness, } from "./documentation-harness.js";
 import { runInteractiveCopilotDocumentationHarness } from "./copilot-harness.js";
 function parseArgs(argv) {
@@ -18,7 +18,7 @@ function parseArgs(argv) {
         }
         const key = token.slice(2);
         providedOptions.add(key);
-        if (key === "verbose" || key === "persist-session" || key === "resume") {
+        if (key === "verbose" || key === "persist-session" || key === "resume" || key === "no-decision-log") {
             args.set(key, "true");
             continue;
         }
@@ -63,6 +63,7 @@ function parseArgs(argv) {
         enabledTools: tools,
         templatePath: args.get("template"),
         draftPath: args.get("draft"),
+        decisionLogPath: args.get("no-decision-log") === "true" ? undefined : args.get("decision-log") ?? "decisions.md",
         authPath: args.get("auth-file"),
         modelsPath: args.get("models-file"),
         copilotCliPath: args.get("copilot-cli-path") ?? process.env.COPILOT_CLI_PATH,
@@ -133,6 +134,9 @@ async function main() {
     const draftPath = args.draftPath
         ? await realpath(resolve(workspacePath, args.draftPath))
         : undefined;
+    const decisionLogPath = args.decisionLogPath
+        ? resolveOutputPath(outputDir, args.decisionLogPath)
+        : undefined;
     const authPath = args.authPath ? await realpath(resolve(workspacePath, args.authPath)) : undefined;
     const modelsPath = args.modelsPath
         ? await realpath(resolve(workspacePath, args.modelsPath))
@@ -154,6 +158,7 @@ async function main() {
         extensionPaths,
         templatePath,
         draftPath,
+        decisionLogPath,
         authPath,
         modelsPath,
         copilotCliPath,
@@ -170,6 +175,15 @@ async function main() {
     if (result.sessionFile) {
         process.stderr.write(`Session file: ${result.sessionFile}\n`);
     }
+}
+function resolveOutputPath(outputDir, path) {
+    const resolvedOutputDir = resolve(outputDir);
+    const resolvedPath = isAbsolute(path) ? resolve(path) : resolve(resolvedOutputDir, path);
+    const relativePath = relative(resolvedOutputDir, resolvedPath);
+    if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+        throw new Error(`Path must stay inside the output directory: ${path}`);
+    }
+    return resolvedPath;
 }
 async function collectReferenceFiles(directories, extensions) {
     const extensionSet = new Set(extensions.map((extension) => extension.toLowerCase()));

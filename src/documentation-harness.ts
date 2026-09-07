@@ -19,6 +19,7 @@ import {
   documentationSystemPrompt,
   type DocumentationMode,
 } from "./prompts.js";
+import { appendDecisionLogEntry, type DecisionLogEntry } from "./decision-log.js";
 
 export interface DocumentationHarnessOptions {
   readonly runtime: "pi" | "copilot";
@@ -31,6 +32,7 @@ export interface DocumentationHarnessOptions {
   readonly enabledTools: readonly string[];
   readonly templatePath?: string;
   readonly draftPath?: string;
+  readonly decisionLogPath?: string;
   readonly authPath?: string;
   readonly modelsPath?: string;
   readonly copilotCliPath?: string;
@@ -67,10 +69,22 @@ export async function runInteractiveDocumentationHarness(
   logVerbose(options, `Output directory: ${options.outputDir}`);
   logVerbose(options, `Template: ${options.templatePath ?? "(none)"}`);
   logVerbose(options, `Draft: ${options.draftPath ?? "(none)"}`);
+  logVerbose(options, `Decision log: ${options.decisionLogPath ?? "(disabled)"}`);
   logVerboseList(options, "References", options.referencePaths);
   logVerboseList(options, "Extensions", options.extensionPaths);
   const documentWriteTool = createDocumentWriteTool(options.outputDir);
-  const activeTools = [...new Set(["read", "edit", documentWriteTool.name, ...options.enabledTools])];
+  const decisionLogTool = options.decisionLogPath
+    ? createDecisionLogTool(options.decisionLogPath)
+    : undefined;
+  const activeTools = [
+    ...new Set([
+      "read",
+      "edit",
+      documentWriteTool.name,
+      ...(decisionLogTool ? [decisionLogTool.name] : []),
+      ...options.enabledTools,
+    ]),
+  ];
   logVerboseList(options, "Enabled tools", activeTools);
   logVerbose(options, `Models file: ${options.modelsPath ?? "(default)"}`);
   logVerbose(options, `Auth file: ${options.authPath ?? "(default)"}`);
@@ -138,7 +152,7 @@ export async function runInteractiveDocumentationHarness(
     settingsManager,
     thinkingLevel: options.thinkingLevel ?? "medium",
     tools: activeTools,
-    customTools: [documentWriteTool],
+    customTools: [documentWriteTool, ...(decisionLogTool ? [decisionLogTool] : [])],
   });
   logVerboseList(options, "Providers after session startup", modelRuntime.getRegisteredProviderIds());
   logVerboseList(
@@ -193,6 +207,79 @@ export async function runInteractiveDocumentationHarness(
     unsubscribe();
     session.dispose();
   }
+}
+
+interface DecisionLogToolParams {
+  readonly section?: string;
+  readonly decision: string;
+  readonly rationale?: string;
+  readonly source?: string;
+  readonly status?: string;
+}
+
+const decisionLogSchema = {
+  type: "object",
+  properties: {
+    section: {
+      type: "string",
+      description: "Document section or topic this decision belongs to.",
+    },
+    decision: {
+      type: "string",
+      description: "The concise decision, assumption, open question, or approved direction to record.",
+    },
+    rationale: {
+      type: "string",
+      description: "Brief reason for the decision.",
+    },
+    source: {
+      type: "string",
+      description: "Reference document, user feedback, or conversation source that supports the decision.",
+    },
+    status: {
+      type: "string",
+      description: "Decision status, such as approved, assumed, open, revised, or rejected.",
+    },
+  },
+  required: ["decision"],
+  additionalProperties: false,
+} as ToolDefinition["parameters"];
+
+function createDecisionLogTool(decisionLogPath: string): ToolDefinition {
+  return defineTool({
+    name: "record_decision",
+    label: "record decision",
+    description:
+      "Append a concise documentation decision, assumption, open question, or approved direction to the session decision log.",
+    promptSnippet: "Append decisions, assumptions, and open questions to the decision log",
+    promptGuidelines: [
+      "Use record_decision after the user confirms a direction, resolves an open question, or accepts a section-level assumption.",
+      "Keep each decision log entry concise and tied to a section or topic when possible.",
+      "Do not record secrets, credentials, or large excerpts from reference documents.",
+    ],
+    parameters: decisionLogSchema,
+    async execute(_toolCallId, params) {
+      const entry = params as DecisionLogToolParams;
+      if (!entry.decision || entry.decision.trim().length === 0) {
+        return documentWriteError("Decision must not be empty.");
+      }
+      await appendDecisionLogEntry(decisionLogPath, entryToDecisionLogEntry(entry));
+      return {
+        content: [{ type: "text" as const, text: `Recorded decision in ${decisionLogPath}` }],
+        details: undefined,
+      };
+    },
+  });
+}
+
+function entryToDecisionLogEntry(entry: DecisionLogToolParams): DecisionLogEntry {
+  return {
+    decision: entry.decision,
+    rationale: entry.rationale,
+    section: entry.section,
+    source: entry.source,
+    status: entry.status,
+  };
 }
 
 function createDocumentWriteTool(outputDir: string): ToolDefinition {
@@ -257,6 +344,7 @@ type SessionMetadataOptions = Pick<
   | "enabledTools"
   | "templatePath"
   | "draftPath"
+  | "decisionLogPath"
   | "modelsPath"
   | "sessionDir"
   | "model"
@@ -294,6 +382,9 @@ async function hydrateOptionsFromSessionMetadata(
     enabledTools: providedOptions.has("tool") ? options.enabledTools : saved.enabledTools,
     templatePath: providedOptions.has("template") ? options.templatePath : saved.templatePath,
     draftPath: providedOptions.has("draft") ? options.draftPath : saved.draftPath,
+    decisionLogPath: providedOptions.has("decision-log") || providedOptions.has("no-decision-log")
+      ? options.decisionLogPath
+      : saved.decisionLogPath ?? options.decisionLogPath,
     modelsPath: providedOptions.has("models-file") ? options.modelsPath : saved.modelsPath,
     sessionDir: providedOptions.has("session-dir") ? options.sessionDir : saved.sessionDir,
     model: providedOptions.has("model") ? options.model : saved.model,
@@ -344,6 +435,7 @@ async function writeSessionMetadata(
       enabledTools: options.enabledTools,
       templatePath: options.templatePath,
       draftPath: options.draftPath,
+      decisionLogPath: options.decisionLogPath,
       modelsPath: options.modelsPath,
       sessionDir: options.sessionDir,
       model: options.model,

@@ -13,6 +13,7 @@ import {
   buildInitialDocumentationPrompt,
   documentationSystemPrompt,
 } from "./prompts.js";
+import { appendDecisionLogEntry, type DecisionLogEntry } from "./decision-log.js";
 
 interface WriteDocumentArgs {
   readonly path: string;
@@ -21,6 +22,14 @@ interface WriteDocumentArgs {
 
 interface ReadDocumentArgs {
   readonly path: string;
+}
+
+interface RecordDecisionArgs {
+  readonly section?: string;
+  readonly decision: string;
+  readonly rationale?: string;
+  readonly source?: string;
+  readonly status?: string;
 }
 
 interface AssistantMessageDeltaEvent {
@@ -65,6 +74,7 @@ export async function runInteractiveCopilotDocumentationHarness(
   logVerbose(options, "Starting Copilot documentation harness");
   logVerbose(options, `Workspace: ${options.workspacePath}`);
   logVerbose(options, `Output directory: ${options.outputDir}`);
+  logVerbose(options, `Decision log: ${options.decisionLogPath ?? "(disabled)"}`);
   logVerbose(options, `Model: ${options.copilotModel ?? "auto"}`);
   logVerboseList(options, "References", options.referencePaths);
 
@@ -91,7 +101,11 @@ export async function runInteractiveCopilotDocumentationHarness(
   const readableDocuments = createReadableDocumentRegistry(options);
   const listDocuments = createCopilotListDocumentsTool(readableDocuments);
   const readDocument = createCopilotReadDocumentTool(options, readableDocuments);
+  const recordDecision = options.decisionLogPath
+    ? createCopilotRecordDecisionTool(options.decisionLogPath)
+    : undefined;
   const writeDocument = createCopilotWriteDocumentTool(options.outputDir);
+  const tools = [listDocuments, readDocument, ...(recordDecision ? [recordDecision] : []), writeDocument];
 
   await client.start();
 
@@ -100,7 +114,7 @@ export async function runInteractiveCopilotDocumentationHarness(
     assertCopilotModelAvailable(options.copilotModel, models);
 
     const session = await client.createSession({
-      availableTools: ["custom:list_documents", "custom:read_document", "custom:write_document"],
+      availableTools: tools.map((tool) => `custom:${tool.name}`),
       clientName: "documentation-agent-harness",
       model: options.copilotModel,
       streaming: true,
@@ -108,7 +122,7 @@ export async function runInteractiveCopilotDocumentationHarness(
         mode: "append",
         content: documentationSystemPrompt,
       },
-      tools: [listDocuments, readDocument, writeDocument],
+      tools,
       workingDirectory: options.workspacePath,
     });
 
@@ -310,6 +324,63 @@ function createCopilotReadDocumentTool(
         return documentToolFailure(`Could not read document: ${getErrorMessage(error)}`);
       }
     },
+  };
+}
+
+function createCopilotRecordDecisionTool(decisionLogPath: string): CopilotTool<RecordDecisionArgs> {
+  return {
+    name: "record_decision",
+    description:
+      "Append a concise documentation decision, assumption, open question, or approved direction to the session decision log.",
+    defer: "never",
+    parameters: {
+      type: "object",
+      properties: {
+        section: {
+          type: "string",
+          description: "Document section or topic this decision belongs to.",
+        },
+        decision: {
+          type: "string",
+          description: "The concise decision, assumption, open question, or approved direction to record.",
+        },
+        rationale: {
+          type: "string",
+          description: "Brief reason for the decision.",
+        },
+        source: {
+          type: "string",
+          description: "Reference document, user feedback, or conversation source that supports the decision.",
+        },
+        status: {
+          type: "string",
+          description: "Decision status, such as approved, assumed, open, revised, or rejected.",
+        },
+      },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    skipPermission: true,
+    handler: async (args: RecordDecisionArgs) => {
+      if (!args.decision || args.decision.trim().length === 0) {
+        return documentToolFailure("Decision must not be empty.");
+      }
+      await appendDecisionLogEntry(decisionLogPath, recordDecisionArgsToEntry(args));
+      return {
+        resultType: "success" as const,
+        textResultForLlm: `Recorded decision in ${decisionLogPath}`,
+      };
+    },
+  };
+}
+
+function recordDecisionArgsToEntry(args: RecordDecisionArgs): DecisionLogEntry {
+  return {
+    decision: args.decision,
+    rationale: args.rationale,
+    section: args.section,
+    source: args.source,
+    status: args.status,
   };
 }
 

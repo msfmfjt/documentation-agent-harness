@@ -73,6 +73,8 @@ Options:
 - `--reference-dir`: Directory of reference documents. Files are discovered recursively.
 - `--reference-ext`: Reference file extension to include when using `--reference-dir`. Can be specified multiple times or as a comma-separated list.
 - `--draft`: Existing draft to edit. If omitted, the session assumes a new document.
+- `--decision-log`: Decision log path relative to `--output`. Defaults to `decisions.md`.
+- `--no-decision-log`: Disable decision log recording.
 - `--mode`: Initial mode. One of `overview`, `api`, `architecture`, `onboarding`, `draft`, or `full`.
 - `--model`: Model to use. For Pi runtime, use `provider/model-id`. For Copilot runtime, use the Copilot model id.
 - `--models-file`: Path to a custom Pi `models.json` file.
@@ -101,9 +103,12 @@ See [docs/template-authoring.md](docs/template-authoring.md) for guidance on wri
 4. The user provides revision direction or additional information.
 5. The agent revises the section.
 6. The same loop continues for each section.
-7. After user approval, the agent creates or edits the Markdown file.
+7. Confirmed decisions, assumptions, and open questions are appended to the decision log.
+8. After user approval, the agent creates or edits the Markdown file.
 
 Final documentation files are written through the built-in harness tool `write_document`. It accepts paths relative to `--output` and rejects absolute paths or paths that leave the output directory.
+
+Decision log entries are written through the built-in harness tool `record_decision`. By default, entries are appended to `docs/generated/decisions.md` when `--output` is left at its default. The log is intended to stay concise and AI-friendly for session resume, review, and later editing.
 
 When using the Copilot runtime, the harness also provides `list_documents` and `read_document`. These tools allow the agent to read only the configured template, references, draft, and generated documentation files.
 
@@ -188,7 +193,7 @@ npm run doc -- \
   --output docs/generated
 ```
 
-If an extension registers custom tools, pass each tool name with `--tool`. The Pi runtime enables `read`, `edit`, and `write_document` by default. The Copilot runtime enables constrained `list_documents`, `read_document`, and `write_document` tools.
+If an extension registers custom tools, pass each tool name with `--tool`. The Pi runtime enables `read`, `edit`, `record_decision`, and `write_document` by default. The Copilot runtime enables constrained `list_documents`, `read_document`, `record_decision`, and `write_document` tools.
 
 Use `--verbose` when debugging custom provider loading:
 
